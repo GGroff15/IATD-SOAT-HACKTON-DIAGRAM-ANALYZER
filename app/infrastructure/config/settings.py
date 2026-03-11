@@ -7,6 +7,11 @@ class Settings(BaseSettings):
     SQS_QUEUE_URL: str
     S3_BUCKET_NAME: str
     AWS_ENDPOINT_URL: Optional[str] = None
+    
+    # YOLO Detection Settings
+    YOLO_MODEL_NAME: str = "yolov8n.pt"
+    YOLO_CONFIDENCE_THRESHOLD: float = 0.5
+    YOLO_DEVICE: str = "cpu"
 
     class Config:
         env_file = ".env"

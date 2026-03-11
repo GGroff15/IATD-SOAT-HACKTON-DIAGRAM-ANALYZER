@@ -24,3 +24,7 @@ class ImageConversionError(DiagramAnalyzerException):
 
 class UnsupportedFileFormatError(DiagramAnalyzerException):
     """Raised when a file format is not supported for conversion."""
+
+
+class DiagramDetectionError(DiagramAnalyzerException):
+    """Raised when diagram component detection fails."""

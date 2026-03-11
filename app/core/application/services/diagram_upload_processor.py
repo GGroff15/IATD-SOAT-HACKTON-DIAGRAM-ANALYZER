@@ -3,6 +3,7 @@ import structlog
 from app.core.domain.entities.diagram_upload import DiagramUpload
 from app.core.application.ports.file_storage import FileStorage
 from app.core.application.ports.image_converter import ImageConverter
+from app.core.application.ports.diagram_detector import DiagramDetector
 
 logger = structlog.get_logger()
 
@@ -10,15 +11,22 @@ logger = structlog.get_logger()
 class DiagramUploadProcessor:
     """Application service for processing diagram upload events."""
 
-    def __init__(self, file_storage: FileStorage, image_converter: ImageConverter):
+    def __init__(
+        self,
+        file_storage: FileStorage,
+        image_converter: ImageConverter,
+        diagram_detector: DiagramDetector,
+    ):
         """Initialize the processor with injected dependencies.
 
         Args:
             file_storage: File storage adapter for downloading diagram files
             image_converter: Image converter adapter for normalizing file formats
+            diagram_detector: Diagram detector adapter for identifying components
         """
         self.file_storage = file_storage
         self.image_converter = image_converter
+        self.diagram_detector = diagram_detector
 
     async def process(self, upload: DiagramUpload) -> None:
         """Process a diagram upload event by downloading and analyzing the diagram.
@@ -58,5 +66,14 @@ class DiagramUploadProcessor:
             image_size_bytes=len(image_bytes),
         )
         
-        # Future: Add diagram analysis logic here
-        # For now, the normalized image is ready for analysis
+        # Detect components in the diagram
+        analysis_result = self.diagram_detector.detect(
+            diagram_upload_id=upload.diagram_upload_id,
+            image_bytes=image_bytes,
+        )
+        
+        logger.info(
+            "diagram_upload.process.completed",
+            diagram_upload_id=str(upload.diagram_upload_id),
+            component_count=analysis_result.component_count,
+        )
