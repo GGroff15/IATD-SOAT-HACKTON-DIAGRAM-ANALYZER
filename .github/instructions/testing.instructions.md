@@ -1,11 +1,11 @@
 ---
-description: Testing guidelines, structure, coverage requirements, and pytest patterns
+description: Testing guidelines, structure, and when to use testing skills
 applyTo: 'tests/**/*.py'
 ---
 
 # Testing Guidelines
 
-## Structure
+## Test Structure
 
 Mirror `app/` structure in `tests/`:
 
@@ -14,275 +14,177 @@ tests/
 ├── unit/                           # Test individual functions/classes
 │   ├── core/
 │   │   ├── application/
-│   │   │   └── test_diagram_service.py
 │   │   └── domain/
-│   │       └── test_diagram_entity.py
 │   └── adapter/
-│       └── driven/
-│           └── test_s3_repository.py
 ├── integration/                    # Test component interactions
 │   └── test_diagram_workflow.py
 └── e2e/                           # Test full workflows
     └── test_api_endpoints.py
 ```
 
+### BDD Test Structure
+
+Behavior tests use Behave and live in `features/`:
+
+```
+features/
+├── diagram_analysis.feature       # Gherkin scenarios
+├── diagram_upload.feature
+├── steps/                         # Step definitions
+│   ├── diagram_steps.py
+│   └── common_steps.py
+└── environment.py                 # Behave hooks and setup
+```
+
 ## Naming Conventions
 
-### Test Files
-```python
-test_<module_name>.py
-test_diagram_service.py
-test_sqs_handler.py
-```
+- **Test files:** `test_<module_name>.py`
+- **Test functions:** `test_<function>_<scenario>()`
 
-### Test Functions
-```python
-def test_<function>_<scenario>():
-    """Test that ..."""
-    pass
-
-def test_analyze_diagram_success():
-    pass
-
-def test_analyze_diagram_raises_error_when_format_invalid():
-    pass
-```
+Examples:
+- `test_diagram_service.py`
+- `test_analyze_diagram_success()`
+- `test_analyze_diagram_raises_error_when_format_invalid()`
 
 ## Coverage Requirements
 
-- **Target:** 80%+ coverage
-- **Critical paths:** 100% coverage
+- **Target:** 80%+ overall coverage
+- **Critical paths:** 100% coverage (domain and application layers)
 - **Run with:** `pytest --cov=app tests/`
 
-## Unit Tests
+## Test Type Guidelines
 
-Test individual functions/classes in isolation with mocked dependencies:
+### Unit Tests (`tests/unit/`)
 
-```python
-# tests/unit/core/application/test_diagram_service.py
-import pytest
-from unittest.mock import Mock, AsyncMock
-from app.core.application.services.diagram_service import DiagramService
-from app.core.application.exceptions import DiagramProcessingError
+**When to use:**
+- Testing individual functions or classes in isolation
+- Testing domain entities and business logic
+- Testing application services with mocked dependencies
+- Testing adapter implementations
 
-@pytest.mark.asyncio
-async def test_upload_diagram_success():
-    # Arrange
-    mock_repo = AsyncMock()
-    mock_publisher = AsyncMock()
-    service = DiagramService(mock_repo, mock_publisher)
-    content = b"fake image content"
-    
-    # Act
-    result = await service.upload_diagram(content, "PNG")
-    
-    # Assert
-    assert result.format == "PNG"
-    assert result.analyzed is False
-    mock_repo.save.assert_called_once()
+**Key principle:** Mock all external dependencies.
 
-@pytest.mark.asyncio
-async def test_upload_diagram_exceeds_size_limit():
-    # Arrange
-    service = DiagramService(Mock(), Mock())
-    content = b"x" * (11 * 1024 * 1024)  # 11MB
-    
-    # Act & Assert
-    with pytest.raises(DiagramProcessingError, match="exceeds 10MB"):
-        await service.upload_diagram(content, "PNG")
+**Use the `unit-test` skill** when writing unit tests. The skill provides:
+- Layer-specific patterns (domain, application, driver, driven)
+- Mocking strategies for each layer
+- Fixtures and common patterns
+- AAA (Arrange-Act-Assert) examples
+
+### BDD Tests (`features/`)
+
+**When to use:**
+- Describing user-facing behavior in business language
+- Validating acceptance criteria with stakeholders
+- Testing complete workflows from user perspective
+- Creating living documentation of system behavior
+
+**Key principle:** Write scenarios in Gherkin (Given/When/Then) that non-technical stakeholders can read.
+
+**Use the `behavior-test` skill** when writing BDD tests. The skill provides:
+- Gherkin writing guidelines and best practices
+- Step definition patterns and templates
+- Environment hooks setup (before/after scenarios)
+- Integration with hexagonal architecture
+- Complete working examples
+- Tag organization strategies
+
+**Structure:**
+- **Feature files:** `.feature` files with Gherkin scenarios
+- **Step definitions:** Python implementations in `features/steps/`
+- **Environment hooks:** Setup/teardown in `features/environment.py`
+
+**Example scenario:**
+```gherkin
+Feature: Diagram Analysis
+  As a user
+  I want to upload and analyze diagrams
+  So that I can extract structured information
+
+  Scenario: Analyze valid UML diagram
+    Given I have a valid UML class diagram
+    When I upload the diagram for analysis
+    Then the analysis should succeed
+    And I should receive detected entities
+    And I should receive relationships between entities
 ```
 
-**Unit Test Rules:**
-- Mock all external dependencies
-- Test one function/method at a time
-- Test both success and error cases
-- Use descriptive assertion messages
+### Integration Tests (`tests/integration/`)
 
-## Integration Tests
+**When to use:**
+- Testing workflows across multiple layers
+- Testing adapter implementations with real resources (temp files, in-memory data)
+- Validating that ports and adapters integrate correctly
+- Testing transaction boundaries
 
-Test interaction between components:
+**Key principle:** Use real implementations where practical with temporary resources.
 
-```python
-# tests/integration/test_diagram_workflow.py
-import pytest
-from app.core.application.services.diagram_service import DiagramService
-from app.adapter.driven.persistence.file_repository import FileRepository
+**Use the `integration-test` skill** when writing integration tests. The skill provides:
+- Multi-layer workflow patterns
+- Real vs mock component decisions
+- Temporary resource management
+- Transaction and state testing
 
-@pytest.mark.asyncio
-async def test_full_diagram_upload_and_retrieval(tmp_path):
-    # Use real repository with temp directory
-    repo = FileRepository(base_path=str(tmp_path))
-    service = DiagramService(repo, None)
-    
-    # Upload
-    diagram = await service.upload_diagram(b"test content", "PNG")
-    diagram_id = diagram.id
-    
-    # Retrieve
-    retrieved = await service.get_diagram(diagram_id)
-    
-    # Verify
-    assert retrieved.id == diagram_id
-    assert retrieved.content == b"test content"
+### E2E Tests (`tests/e2e/`)
+
+**When to use:**
+- Testing complete user workflows
+- Testing with external dependencies (LocalStack for AWS)
+
+**Key principle:** Test the full system as users would interact with it.
+
+## Test Fixtures
+
+Create shared fixtures in `tests/conftest.py` for common test setup. Layer-specific fixtures go in their respective `conftest.py` files:
+- `tests/unit/conftest.py` - Unit test fixtures
+- `tests/integration/conftest.py` - Integration test fixtures
+
+## When to Use Which Skill
+
+| Task | Skill | Why |
+|------|-------|-----|
+| Writing tests for domain entities | `unit-test` | Pure logic, no dependencies |
+| Writing tests for application services | `unit-test` | Mock all adapters |
+| Writing tests for repositories | `unit-test` or `integration-test` | Unit for mocked I/O, integration for temp resources |
+| Testing full workflow (upload → analyze) | `integration-test` | Multiple layers involved |
+| Testing event listener → service → persistence | `integration-test` | End-to-end component flow |
+| Validating acceptance criteria in business language | `behavior-test` | Stakeholder-readable Gherkin scenarios |
+| Writing Given/When/Then scenarios | `behavior-test` | BDD with Behave framework |
+| Creating living documentation | `behavior-test` | Feature files as documentation |
+
+## Running Tests
+
+### Pytest (Unit/Integration/E2E)
+
+```bash
+# All tests
+pytest
+
+# Specific type
+pytest tests/unit/
+pytest tests/integration/
+
+# With coverage
+pytest --cov=app --cov-report=html
+
+# Specific test file
+pytest tests/unit/core/application/test_diagram_service.py
 ```
 
-**Integration Test Rules:**
-- Use real implementations where practical
-- Use temporary resources (files, databases)
-- Test realistic workflows
-- Clean up resources after tests
+### Behave (BDD)
 
-## E2E Tests
+```bash
+# All feature files
+behave
 
-Test through the API layer:
+# Specific feature
+behave features/diagram_analysis.feature
 
-```python
-# tests/e2e/test_api_endpoints.py
-import pytest
-from fastapi.testclient import TestClient
-from main import app
+# Specific scenario by tag
+behave --tags=@smoke
 
-client = TestClient(app)
+# With verbose output
+behave --verbose
 
-def test_upload_and_analyze_diagram():
-    # Upload diagram
-    files = {"file": ("test.png", b"fake image", "image/png")}
-    upload_response = client.post("/diagrams/", files=files)
-    assert upload_response.status_code == 201
-    diagram_id = upload_response.json()["id"]
-    
-    # Trigger analysis
-    analyze_response = client.post(f"/diagrams/{diagram_id}/analyze")
-    assert analyze_response.status_code == 200
-    
-    # Verify results
-    get_response = client.get(f"/diagrams/{diagram_id}")
-    assert get_response.json()["analyzed"] is True
-
-def test_upload_invalid_file_type_returns_400():
-    files = {"file": ("test.txt", b"text content", "text/plain")}
-    response = client.post("/diagrams/", files=files)
-    assert response.status_code == 400
-    assert "must be an image" in response.json()["detail"]
-```
-
-## Pytest Fixtures
-
-Use fixtures for common setup:
-
-```python
-# tests/conftest.py
-import pytest
-from app.core.application.services.diagram_service import DiagramService
-
-@pytest.fixture
-def diagram_service():
-    """Provide a DiagramService instance with mocked dependencies."""
-    from unittest.mock import Mock
-    return DiagramService(Mock(), Mock())
-
-@pytest.fixture
-def sample_diagram_content():
-    """Provide sample diagram content for tests."""
-    return b"sample image bytes"
-
-@pytest.fixture
-async def uploaded_diagram(diagram_service, sample_diagram_content):
-    """Provide an already-uploaded diagram."""
-    return await diagram_service.upload_diagram(
-        sample_diagram_content, 
-        "PNG"
-    )
-```
-
-**Fixture Scope:**
-- `function` (default): New instance per test
-- `module`: Shared within module
-- `session`: Shared across all tests
-
-## Mocking Best Practices
-
-```python
-from unittest.mock import Mock, AsyncMock, patch
-
-# Mock async functions
-mock_repo = AsyncMock()
-mock_repo.get.return_value = Diagram(...)
-
-# Mock sync functions
-mock_logger = Mock()
-mock_logger.info.assert_called_with("Expected message")
-
-# Patch external dependencies
-@patch('app.adapter.driven.persistence.s3_repository.boto3.client')
-def test_s3_upload(mock_boto3):
-    mock_s3 = mock_boto3.return_value
-    # Test with mocked S3 client
-    pass
-```
-
-## Parametrized Tests
-
-Test multiple scenarios with one function:
-
-```python
-@pytest.mark.parametrize("format,expected", [
-    ("PNG", True),
-    ("JPG", True),
-    ("JPEG", True),
-    ("SVG", True),
-    ("GIF", False),
-])
-def test_format_validation(format, expected):
-    result = is_valid_format(format)
-    assert result == expected
-```
-
-## Testing Async Code
-
-Always use `@pytest.mark.asyncio` for async tests:
-
-```python
-@pytest.mark.asyncio
-async def test_async_operation():
-    result = await async_function()
-    assert result is not None
-```
-
-## Common Assertion Patterns
-
-```python
-# Exact equality
-assert result == expected
-
-# Contains
-assert "error" in response.json()
-
-# Type checking
-assert isinstance(diagram, Diagram)
-
-# Exceptions with context
-with pytest.raises(ValueError, match="Invalid format"):
-    validate_format("INVALID")
-
-# Mock call verification
-mock_repo.save.assert_called_once_with(diagram)
-mock_repo.save.assert_not_called()
-```
-
-## Test Data Management
-
-Keep test data separate:
-
-```python
-# tests/fixtures/sample_diagrams.py
-SAMPLE_PNG = b"\x89PNG\r\n..."
-SAMPLE_INVALID = b"not an image"
-
-# Use in tests
-from tests.fixtures.sample_diagrams import SAMPLE_PNG
-
-def test_with_sample_data():
-    result = process_diagram(SAMPLE_PNG)
-    assert result is not None
+# Dry run (check syntax)
+behave --dry-run
 ```

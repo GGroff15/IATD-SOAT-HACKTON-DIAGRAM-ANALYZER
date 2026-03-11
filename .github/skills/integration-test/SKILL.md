@@ -8,7 +8,7 @@ argument-hint: 'Specify workflow: persistence, events, full-workflow, or adapter
 
 Test interactions between components using real implementations where practical, verifying that layers work together correctly.
 
-## When to Use
+## When to Use This Skill
 
 - Verifying workflows across multiple layers (domain → application → adapter)
 - Testing adapter implementations with real resources (temp files, in-memory databases)
@@ -16,6 +16,7 @@ Test interactions between components using real implementations where practical,
 - Testing end-to-end use cases without external dependencies
 - Ensuring transaction boundaries work correctly
 - Debugging integration issues between components
+- Need examples of multi-layer test patterns
 
 ## Integration vs Unit vs E2E
 
@@ -40,9 +41,9 @@ tests/integration/
 
 **Naming:** `test_<workflow>_<layer_interaction>.py`
 
-## Workflow
+## Integration Testing Workflow
 
-### 1. Identify the Integration Scenario
+### Step 1: Identify the Integration Scenario
 
 Ask: "What workflow am I testing across which layers?"
 
@@ -52,7 +53,7 @@ Ask: "What workflow am I testing across which layers?"
 - Event listener → service → repository (full inbound workflow)
 - Multiple adapters working together
 
-### 2. Determine Real vs Mock Components
+### Step 2: Determine Real vs Mock Components
 
 Use **real implementations** for:
 - ✅ Components under test (services, repositories)
@@ -64,7 +65,7 @@ Use **mocks** for:
 - ❌ Slow operations
 - ❌ Components not part of the integration being tested
 
-### 3. Set Up Temporary Resources
+### Step 3: Set Up Temporary Resources
 
 Use pytest fixtures for setup/teardown:
 
@@ -78,15 +79,15 @@ def temp_storage(tmp_path):
     # Cleanup happens automatically with tmp_path
 ```
 
-### 4. Write the Integration Test
+### Step 4: Write the Integration Test
 
 Follow the AAA pattern with realistic workflows.
 
 ## Layer Integration Patterns
 
-### Application + Driven Adapter (Persistence)
+### Pattern 1: Application + Driven Adapter (Persistence)
 
-Test that application service correctly interacts with repository:
+Test that application service correctly interacts with repository.
 
 ```python
 # tests/integration/test_diagram_persistence_workflow.py
@@ -151,6 +152,8 @@ async def test_analyze_diagram_persists_state_change(diagram_service):
 @pytest.mark.asyncio
 async def test_concurrent_uploads_all_persist(diagram_service):
     """Test that multiple concurrent uploads all persist correctly."""
+    import asyncio
+    
     # Arrange
     contents = [
         b"diagram 1 content",
@@ -179,14 +182,15 @@ async def test_concurrent_uploads_all_persist(diagram_service):
     assert set(d.content for d in retrieved) == set(contents)
 ```
 
-### Application + Driven Adapter (Event Publishing)
+### Pattern 2: Application + Driven Adapter (Event Publishing)
 
-Test that events are published correctly during workflows:
+Test that events are published correctly during workflows.
 
 ```python
 # tests/integration/test_event_publishing_workflow.py
 import pytest
 from unittest.mock import Mock, call
+from datetime import datetime
 from app.core.application.services.diagram_service import DiagramService
 from app.adapter.driven.persistence.file_repository import FileRepository
 
@@ -247,13 +251,15 @@ async def test_full_workflow_publishes_multiple_events(
     assert calls[1][0][1]["result"] is not None
 ```
 
-### Driver Adapter + Application + Driven Adapter (Full Workflow)
+### Pattern 3: Driver + Application + Driven (Full Inbound Workflow)
 
-Test complete inbound flow from event listener through to persistence:
+Test complete inbound flow from event listener through to persistence.
 
 ```python
 # tests/integration/test_full_inbound_workflow.py
 import pytest
+import json
+import base64
 from app.adapter.driver.event_listeners.sqs_handler import DiagramEventHandler
 from app.core.application.services.diagram_service import DiagramService
 from app.adapter.driven.persistence.file_repository import FileRepository
@@ -318,9 +324,9 @@ async def test_invalid_message_does_not_corrupt_storage(integrated_handler):
     assert retrieved.content == b"valid"
 ```
 
-### Multiple Adapters Integration
+### Pattern 4: Multiple Adapters Integration
 
-Test scenarios where multiple adapters interact:
+Test scenarios where multiple adapters interact.
 
 ```python
 # tests/integration/test_multi_adapter_workflow.py
@@ -368,7 +374,7 @@ async def test_diagram_archived_to_remote_after_analysis(multi_adapter_service):
     s3_client.upload.assert_called_once()
 ```
 
-## Fixtures for Integration Tests
+## Integration Test Fixtures
 
 Create specialized fixtures in `tests/integration/conftest.py`:
 
@@ -422,7 +428,7 @@ async def sample_uploaded_diagram(integrated_diagram_service):
     )
 ```
 
-## Transaction and State Management
+## Testing Transaction & State Management
 
 Test that state changes happen atomically:
 
@@ -430,6 +436,8 @@ Test that state changes happen atomically:
 @pytest.mark.asyncio
 async def test_failed_analysis_does_not_mark_as_analyzed(diagram_service):
     """Test that if analysis fails, diagram state doesn't change."""
+    from unittest.mock import patch
+    
     # Arrange
     diagram = await diagram_service.upload_diagram(b"content", "PNG")
     
@@ -447,6 +455,8 @@ async def test_failed_analysis_does_not_mark_as_analyzed(diagram_service):
 @pytest.mark.asyncio
 async def test_concurrent_updates_maintain_consistency(diagram_service):
     """Test that concurrent operations maintain data consistency."""
+    import asyncio
+    
     # Arrange
     diagram = await diagram_service.upload_diagram(b"content", "PNG")
     
@@ -464,7 +474,7 @@ async def test_concurrent_updates_maintain_consistency(diagram_service):
     assert "value" in retrieved.metadata.get("key", "")
 ```
 
-## Resource Cleanup
+## Testing Resource Cleanup
 
 Ensure tests clean up properly:
 
@@ -487,9 +497,7 @@ async def test_cleanup_after_workflow(diagram_service, integration_storage):
     assert len(remaining_files) == 0
 ```
 
-## Common Patterns
-
-### Testing with Time
+## Testing with Time Dependencies
 
 ```python
 @pytest.mark.asyncio
@@ -514,7 +522,7 @@ async def test_diagram_expiry_workflow(diagram_service):
     assert diagram.id not in [d.id for d in active_diagrams]
 ```
 
-### Testing Error Recovery
+## Testing Error Recovery
 
 ```python
 @pytest.mark.asyncio
@@ -548,89 +556,40 @@ async def test_retry_on_transient_failure(diagram_service, real_file_repository)
 # Run only integration tests
 pytest tests/integration/
 
-# Run with coverage
-pytest tests/integration/ --cov=app
-
 # Run specific workflow
 pytest tests/integration/test_diagram_persistence_workflow.py
 
-# Run with verbose output
+# With verbose output
 pytest tests/integration/ -v
 
-# Run parallel (if independent)
+# With coverage
+pytest tests/integration/ --cov=app --cov-report=term-missing
+
+# Stop on first failure
+pytest tests/integration/ -x
+
+# Run in parallel (requires pytest-xdist)
 pytest tests/integration/ -n auto
 ```
 
-## Integration Test Checklist
+## Troubleshooting
 
-- [ ] Test realistic workflows across multiple components
-- [ ] Use real implementations for components under test
-- [ ] Use temporary resources (tmp_path) for storage
-- [ ] Mock only external services and slow operations
-- [ ] Verify state changes persist correctly
-- [ ] Test both success and error paths
-- [ ] Ensure proper cleanup (fixtures handle teardown)
-- [ ] Tests remain fast (10-100ms target)
-- [ ] Tests are independent (can run in any order)
-- [ ] Document what integration is being tested
+**Tests interfering with each other:**
+- Ensure each test uses independent tmp_path
+- Check fixtures have correct scope (function, not module)
+- Verify cleanup happens in fixtures
 
-## Anti-Patterns to Avoid
+**Slow integration tests:**
+- Profile with `pytest --durations=10`
+- Consider if some dependencies should be mocked
+- Check for unnecessary sleep/wait statements
 
-❌ **Testing too much in one test**
-```python
-# Bad: Testing entire system
-async def test_everything():
-    # 50 lines of setup
-    # Testing every feature
-```
+**Flaky tests:**
+- Review timing assumptions
+- Check for race conditions in concurrent tests
+- Add explicit ordering where needed
 
-✅ **Focus on specific integration**
-```python
-# Good: Test one workflow
-async def test_upload_and_retrieve_workflow(): ...
-async def test_analyze_persists_state(): ...
-```
-
-❌ **Using real external services**
-```python
-# Bad: Calling real AWS
-s3_client = boto3.client('s3')
-```
-
-✅ **Mock external, real internal**
-```python
-# Good: Mock external, real internal components
-mock_s3 = AsyncMock()
-real_file_repo = FileRepository(tmp_path)
-```
-
-❌ **Shared state between tests**
-```python
-# Bad: Module-level shared storage
-storage = FileRepository("/tmp/shared")
-```
-
-✅ **Isolated resources per test**
-```python
-# Good: Fresh storage per test
-@pytest.fixture
-def storage(tmp_path):
-    return FileRepository(tmp_path)
-```
-
-❌ **No cleanup**
-```python
-# Bad: Leaving artifacts
-def test_upload():
-    repo = FileRepository("/tmp")
-    # No cleanup
-```
-
-✅ **Automatic cleanup with fixtures**
-```python
-# Good: Fixture handles cleanup
-@pytest.fixture
-def repo(tmp_path):
-    yield FileRepository(tmp_path)
-    # tmp_path cleanup automatic
-```
+**Resource not cleaned up:**
+- Use tmp_path fixture (auto-cleanup)
+- Add explicit cleanup in fixture teardown
+- Check for exceptions preventing cleanup

@@ -5,6 +5,8 @@ applyTo: 'app/**/*.py'
 
 # Hexagonal Architecture
 
+This project follows hexagonal architecture (ports and adapters pattern) with three distinct layers.
+
 ## Layer Structure
 
 ```
@@ -18,9 +20,9 @@ app/
 │       ├── entities/             # Domain entities
 │       └── value_objects/        # Value objects
 └── adapter/
-    ├── driver/                    # Inbound adapters
+    ├── driver/                    # Inbound adapters (receive requests)
     │   └── event_listeners/      # SQS handlers, message consumers
-    └── driven/                    # Outbound adapters
+    └── driven/                    # Outbound adapters (external interactions)
         ├── persistence/          # Data storage (filesystem, DB)
         └── event_publishers/     # Event emitters (SQS, etc.)
 ```
@@ -29,160 +31,96 @@ app/
 
 ### Domain Layer (`app/core/domain/`)
 
-**Pure business logic - no dependencies on infrastructure**
+**Pure business logic with zero infrastructure dependencies**
 
-```python
-# app/core/domain/entities/diagram.py
-from dataclasses import dataclass
-from datetime import datetime
+- Domain entities (core business objects)
+- Value objects (immutable domain concepts)
+- Business rules and invariants
+- No I/O operations, no framework dependencies
+- Easily testable in complete isolation
 
-@dataclass
-class Diagram:
-    """Domain entity representing a diagram."""
-    id: str
-    content: bytes
-    format: str
-    created_at: datetime
-    analyzed: bool = False
-```
-
-**Rules:**
-- No I/O operations
-- No framework dependencies
-- No infrastructure concerns
-- Easily testable in isolation
+**Use when:** Modeling core business concepts that exist independent of technology.
 
 ### Application Service Layer (`app/core/application/`)
 
 **Orchestrates domain logic and coordinates with adapters**
 
-```python
-# app/core/application/services/diagram_service.py
-class DiagramService:
-    def __init__(self, diagram_repo, event_publisher):
-        self.diagram_repo = diagram_repo
-        self.event_publisher = event_publisher
-    
-    async def analyze_diagram(self, diagram_id: str) -> dict:
-        # Orchestrate: fetch, analyze, save, publish event
-        diagram = await self.diagram_repo.get(diagram_id)
-        result = self._perform_analysis(diagram)
-        await self.diagram_repo.save(diagram)
-        await self.event_publisher.publish("diagram.analyzed", result)
-        return result
-```
+- Use case implementations
+- Workflow orchestration across domain and adapters
+- Defines ports (interfaces) for adapters to implement
+- Transaction boundary management
+- Domain exception handling
 
-**Rules:**
-- Contains use case logic
-- Coordinates between domain and adapters
-- Defines interfaces (ports) for adapters
-- Handles transactions
-- Throws domain exceptions
+**Use when:** Implementing end-to-end business workflows that coordinate multiple components.
 
 ### Driver Adapters (`app/adapter/driver/`)
 
-**Inbound - receive requests from external world**
+**Inbound - receive requests from the external world**
 
-#### Event Listeners (`app/adapter/driver/event_listeners/`)
+- Event listeners (SQS, Kafka)
+- Message consumers
+- Keep handlers thin - parse input, delegate to application services
+- Handle framework-specific concerns
 
-```python
-# app/adapter/driver/event_listeners/sqs_handler.py
-async def handle_diagram_upload_event(message: dict):
-    # Parse message, delegate to service
-    service = DiagramService()
-    await service.process_upload(message['diagram_id'])
-```
-
-**Rules:**
-- Keep handlers thin
-- Delegate to application services
-- Handle message parsing/validation
-- Log errors appropriately
+**Use when:** Receiving external input that triggers use cases.
 
 ### Driven Adapters (`app/adapter/driven/`)
 
 **Outbound - interact with external systems**
 
-#### Persistence (`app/adapter/driven/persistence/`)
+- Repositories (persistence)
+- Event publishers (SQS, SNS)
+- External API clients
+- Implement ports defined by application layer
+- Convert between domain entities and external formats
 
-```python
-# app/adapter/driven/persistence/diagram_repository.py
-class DiagramRepository:
-    async def save(self, diagram: Diagram) -> None:
-        # Save to filesystem, S3, database, etc.
-        pass
-    
-    async def get(self, diagram_id: str) -> Diagram:
-        # Retrieve and reconstruct domain entity
-        pass
+**Use when:** Persisting data, publishing events, or calling external services.
+
+## Dependency Rules
+
+**Critical: Dependencies flow inward only**
+
+```
+Adapters → Application → Domain
 ```
 
-**Rules:**
-- Implement interfaces defined by application layer
-- Convert between domain entities and storage format
-- Handle storage-specific errors
-
-#### Event Publishers (`app/adapter/driven/event_publishers/`)
-
-```python
-# app/adapter/driven/event_publishers/sqs_publisher.py
-class SQSPublisher:
-    async def publish(self, event_type: str, payload: dict) -> None:
-        # Send to SQS, Kafka, etc.
-        pass
-```
-
-## Dependency Flow
-
-**Dependency direction: Adapter → Application → Domain**
-
-- Domain depends on nothing
+- Domain depends on nothing (pure logic)
 - Application depends only on domain
 - Adapters depend on application and domain
-- Inject adapters into application services
+- Inject adapters into application services (dependency inversion)
 
-```python
-# Dependency injection example
-diagram_repo = S3DiagramRepository()
-event_publisher = SQSPublisher()
-diagram_service = DiagramService(diagram_repo, event_publisher)
-```
+## Error Handling
 
-## Common Patterns
-
-### Error Handling
-
-Define domain exceptions in `app/core/application/exceptions.py`:
+Define domain-specific exceptions in `app/core/application/exceptions.py`:
 
 ```python
 class DiagramAnalyzerException(Exception):
-    """Base exception"""
+    """Base exception for this service"""
 
 class DiagramNotFoundError(DiagramAnalyzerException):
-    """Raised when diagram doesn't exist"""
+    """Diagram doesn't exist"""
 
 class InvalidDiagramFormatError(DiagramAnalyzerException):
-    """Raised when format is invalid"""
+    """Diagram format is unsupported"""
 ```
 
-### Validation
+**Validation layers:**
+- Input validation: In adapters (Pydantic for API)
+- Business rules: In domain/application layer
+- Data integrity: In persistence layer
 
-- **Input validation:** In adapters (Pydantic for API)
-- **Business rules:** In domain/application layer
-- **Data integrity:** In persistence layer
+## Technology Boundaries
 
-### Pydantic Models
+**Pydantic models:** Use only in API adapters for request/response schemas. Never in domain layer.
 
-Use only in API adapter for request/response:
+**Domain entities:** Use dataclasses or plain classes, not Pydantic models.
 
-```python
-# app/adapter/driver/api/schemas/diagram.py
-from pydantic import BaseModel
+## When Working With This Architecture
 
-class DiagramResponse(BaseModel):
-    id: str
-    format: str
-    analyzed: bool
-```
+- Adding new entity? → `app/core/domain/entities/`
+- Adding new use case? → `app/core/application/services/`
+- Processing external events? → `app/adapter/driver/event_listeners/`
+- Storing data? → `app/adapter/driven/persistence/`
+- Publishing events? → `app/adapter/driven/event_publishers/`
 
-**Don't** use Pydantic in domain layer - use dataclasses or plain classes.
+For implementing features, use the **run-diagram-service** skill to understand the development workflow.

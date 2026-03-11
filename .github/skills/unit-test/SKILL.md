@@ -6,9 +6,9 @@ argument-hint: 'Specify layer: domain, application, driver, or driven'
 
 # Unit Testing for Hexagonal Architecture
 
-Write isolated, fast unit tests for the diagram analyzer service using pytest and proper mocking strategies.
+Write isolated, fast unit tests using pytest with proper mocking strategies for each architecture layer.
 
-## When to Use
+## When to Use This Skill
 
 - Writing tests for new domain entities or value objects
 - Testing application services with mocked dependencies
@@ -16,37 +16,11 @@ Write isolated, fast unit tests for the diagram analyzer service using pytest an
 - Following TDD (Test-Driven Development)
 - Ensuring >80% code coverage
 - Debugging failing tests
+- Need examples of mocking patterns for specific layers
 
-## Workflow
+## Test Structure Pattern
 
-### 1. Identify the Layer
-
-Determine which layer your code belongs to, as each has different testing approaches:
-
-| Layer | Location | Dependencies to Mock |
-|-------|----------|---------------------|
-| Domain | `app/core/domain/` | None (pure logic) |
-| Application | `app/core/application/` | All adapters (repos, publishers) |
-| Driver Adapter | `app/adapter/driver/` | Application services |
-| Driven Adapter | `app/adapter/driven/` | External resources (DB, SQS, filesystem) |
-
-### 2. Create Test File
-
-Mirror the app structure in `tests/unit/`:
-
-```
-app/core/application/services/diagram_service.py
-→ tests/unit/core/application/test_diagram_service.py
-
-app/adapter/driven/persistence/file_repository.py
-→ tests/unit/adapter/driven/persistence/test_file_repository.py
-```
-
-**Naming:** `test_<module_name>.py`
-
-### 3. Write Test Using AAA Pattern
-
-**Arrange-Act-Assert** structure for every test:
+All unit tests follow **AAA (Arrange-Act-Assert)** structure:
 
 ```python
 def test_function_name_scenario():
@@ -58,13 +32,13 @@ def test_function_name_scenario():
     # Assert: Verify the outcome
 ```
 
-### 4. Follow Layer-Specific Patterns
+## Layer-Specific Testing Patterns
 
-See detailed patterns below for each layer.
+### Domain Layer Tests (Zero Mocking)
 
-## Domain Layer Tests
+**Location:** `tests/unit/core/domain/`
 
-**Zero mocking required** - test pure business logic in isolation.
+Domain tests require **no mocking** - test pure business logic in isolation.
 
 ```python
 # tests/unit/core/domain/test_diagram.py
@@ -111,15 +85,19 @@ def test_invalid_format_raises_error():
         Diagram("id", b"content", "INVALID", datetime.now())
 ```
 
-**Domain Testing Rules:**
-- No mocks needed
-- Test all business rules
-- Test edge cases and validation
-- Fast execution (<1ms per test)
+**Domain Testing Checklist:**
+- ✓ No mocks needed
+- ✓ Test all business rules
+- ✓ Test edge cases and validation
+- ✓ Fast execution (<1ms per test)
+- ✓ Test value object immutability
+- ✓ Test entity state transitions
 
-## Application Layer Tests
+### Application Layer Tests (Mock All Adapters)
 
-**Mock all adapters** - test orchestration logic in isolation.
+**Location:** `tests/unit/core/application/`
+
+Application tests must **mock all adapters** to test orchestration logic in isolation.
 
 ```python
 # tests/unit/core/application/test_diagram_service.py
@@ -214,16 +192,20 @@ async def test_analyze_diagram_workflow(
     )
 ```
 
-**Application Testing Rules:**
-- Mock ALL dependencies (repositories, publishers, external services)
-- Test orchestration logic, not implementation details
-- Verify interactions with mocks (`assert_called_once_with`)
-- Test both success and error paths
-- Use descriptive test names that explain the scenario
+**Application Testing Checklist:**
+- ✓ Mock ALL dependencies (repositories, publishers, external services)
+- ✓ Test orchestration logic, not implementation details
+- ✓ Verify interactions with mocks using `assert_called_once_with()`
+- ✓ Test both success and error paths
+- ✓ Use descriptive test names that explain the scenario
+- ✓ Test transaction boundaries
+- ✓ Test error handling and rollback logic
 
-## Driver Adapter Tests (Event Listeners, Handlers)
+### Driver Adapter Tests (Mock Application Services)
 
-**Mock application services** - test message parsing and delegation.
+**Location:** `tests/unit/adapter/driver/`
+
+Driver adapter tests **mock application services** to test message parsing and delegation.
 
 ```python
 # tests/unit/adapter/driver/event_listeners/test_sqs_handler.py
@@ -264,18 +246,31 @@ async def test_handle_invalid_message_logs_error():
     with patch("app.adapter.driver.event_listeners.sqs_handler.logger") as mock_logger:
         await handle_diagram_upload(invalid_message)
         mock_logger.error.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_handle_missing_required_field_raises_error():
+    """Test that missing required fields raise validation error."""
+    # Arrange
+    incomplete_message = {"diagram_id": "123"}  # missing bucket and key
+    
+    # Act & Assert
+    with pytest.raises(KeyError):
+        await handle_diagram_upload(incomplete_message)
 ```
 
-**Driver Testing Rules:**
-- Keep handlers thin (just parse and delegate)
-- Mock the application service
-- Test message parsing logic
-- Test error handling (invalid formats, missing fields)
-- Verify logging for troubleshooting
+**Driver Adapter Testing Checklist:**
+- ✓ Keep handlers thin (just parse and delegate)
+- ✓ Mock the application service
+- ✓ Test message parsing logic
+- ✓ Test error handling (invalid formats, missing fields)
+- ✓ Verify logging for troubleshooting
+- ✓ Test all message format variations
 
-## Driven Adapter Tests (Repositories, Publishers)
+### Driven Adapter Tests (Mock External Resources)
 
-**Mock external resources** - test adapter implementation without I/O.
+**Location:** `tests/unit/adapter/driven/`
+
+Driven adapter tests **mock external resources** to test adapter implementation without I/O.
 
 ```python
 # tests/unit/adapter/driven/persistence/test_file_repository.py
@@ -327,15 +322,29 @@ async def test_get_nonexistent_diagram_returns_none():
     
     # Assert
     assert result is None
+
+@pytest.mark.asyncio
+async def test_save_handles_io_error_gracefully():
+    """Test that I/O errors are handled with proper exceptions."""
+    # Arrange
+    repo = FileRepository(base_path="/tmp/diagrams")
+    diagram = Mock(id="test", content=b"data", format="PNG")
+    
+    # Act & Assert
+    with patch("builtins.open", side_effect=IOError("Disk full")):
+        with pytest.raises(IOError, match="Disk full"):
+            await repo.save(diagram)
 ```
 
-**Driven Testing Rules:**
-- Mock I/O operations (file, network, database)
-- Test the adapter's implementation of the port interface
-- Don't test external libraries (boto3, sqlalchemy)
-- Use `pytest.raises` for expected errors
+**Driven Adapter Testing Checklist:**
+- ✓ Mock I/O operations (file, network, database)
+- ✓ Test the adapter's implementation of the port interface
+- ✓ Don't test external libraries (boto3, sqlalchemy)
+- ✓ Use `pytest.raises` for expected errors
+- ✓ Test error handling and retry logic
+- ✓ Test data format conversion (domain ↔ external)
 
-## Common Patterns
+## Common Testing Patterns
 
 ### Async Testing
 
@@ -348,48 +357,88 @@ async def test_async_function():
 
 ### Parameterized Tests
 
+Test multiple scenarios with one test function:
+
 ```python
 @pytest.mark.parametrize("format_type,expected", [
     ("PNG", True),
     ("JPG", True),
     ("SVG", False),
+    ("GIF", True),
 ])
 def test_is_raster_format(format_type, expected):
+    """Test format detection for multiple types."""
     assert is_raster_format(format_type) == expected
 ```
 
 ### Exception Testing
 
 ```python
+# Test specific exception type and message
 def test_raises_specific_error():
     with pytest.raises(ValueError, match="Invalid format"):
         validate_format("INVALID")
+
+# Test that no exception is raised
+def test_does_not_raise():
+    try:
+        validate_format("PNG")
+    except Exception:
+        pytest.fail("Should not raise exception")
 ```
 
-### Mock Return Values
+### Mock Return Values and Side Effects
 
 ```python
+# Simple return value
 mock_repo.get.return_value = some_object
+
+# Different returns on successive calls
 mock_repo.list.side_effect = [[], [obj1], [obj1, obj2]]
+
+# Raise an exception
+mock_service.process.side_effect = ValueError("Error")
+
+# Call a function
+mock_handler.handle.side_effect = lambda x: x.upper()
 ```
 
 ### Verify Mock Calls
 
 ```python
+# Called once with no arguments
 mock_service.method.assert_called_once()
-mock_service.method.assert_called_once_with(arg1, arg2)
+
+# Called once with specific arguments
+mock_service.method.assert_called_once_with(arg1, arg2, kwarg=value)
+
+# Never called
 mock_service.method.assert_not_called()
+
+# Called specific number of times
 assert mock_service.method.call_count == 3
+
+# Check call arguments for any call
+calls = mock_service.method.call_args_list
+assert calls[0][0][0] == "first argument of first call"
+
+# Verify call order
+mock_manager = Mock()
+mock_manager.attach_mock(mock_repo, 'repo')
+mock_manager.attach_mock(mock_publisher, 'publisher')
+expected_calls = [call.repo.save(diagram), call.publisher.publish(event)]
+assert mock_manager.mock_calls == expected_calls
 ```
 
-## Fixtures in conftest.py
+## Shared Fixtures
 
-Create shared fixtures in `tests/conftest.py`:
+Create common fixtures in `tests/conftest.py`:
 
 ```python
 # tests/conftest.py
 import pytest
 from datetime import datetime
+from app.core.domain.entities.diagram import Diagram
 
 @pytest.fixture
 def sample_diagram_content():
@@ -402,80 +451,67 @@ def diagram_id():
     return "test-diagram-123"
 
 @pytest.fixture
-def current_timestamp():
-    """Provide a fixed timestamp for reproducible tests."""
-    return datetime(2026, 3, 10, 12, 0, 0)
+def sample_diagram(diagram_id, sample_diagram_content):
+    """Provide a pre-constructed diagram entity."""
+    return Diagram(
+        id=diagram_id,
+        content=sample_diagram_content,
+        format="PNG",
+        created_at=datetime.now()
+    )
+
+@pytest.fixture
+def mock_async_repository():
+    """Provide a mocked async repository."""
+    from unittest.mock import AsyncMock
+    return AsyncMock()
 ```
 
-## Coverage Commands
+## Running Unit Tests
 
 ```bash
-# Run tests with coverage
-pytest --cov=app tests/
+# Run all unit tests
+pytest tests/unit/
 
-# Generate HTML report
-pytest --cov=app --cov-report=html tests/
+# Run tests for specific layer
+pytest tests/unit/core/domain/
+pytest tests/unit/core/application/
+pytest tests/unit/adapter/
 
-# Show missing lines
-pytest --cov=app --cov-report=term-missing tests/
+# Run specific test file
+pytest tests/unit/core/application/test_diagram_service.py
 
-# Fail if coverage below threshold
-pytest --cov=app --cov-fail-under=80 tests/
+# Run specific test
+pytest tests/unit/core/application/test_diagram_service.py::test_upload_diagram_success
+
+# With coverage
+pytest tests/unit/ --cov=app --cov-report=term-missing
+
+# Verbose output
+pytest tests/unit/ -v
+
+# Stop on first failure
+pytest tests/unit/ -x
 ```
 
-## Test Quality Checklist
+## Troubleshooting
 
-- [ ] Test name describes the scenario clearly
-- [ ] Follows Arrange-Act-Assert pattern
-- [ ] Docstring explains what is being tested
-- [ ] Mocks are properly configured with expected behavior
-- [ ] Both success and error cases tested
-- [ ] Tests are independent (no shared state)
-- [ ] Tests run fast (<10ms for unit tests)
-- [ ] Assertions are specific and meaningful
-- [ ] No actual I/O operations (files, network, DB)
+**Import errors in tests:**
+- Ensure virtual environment is activated
+- Run `uv sync` to install dependencies
+- Check that test file mirrors app structure
 
-## Anti-Patterns to Avoid
+**Mocks not working:**
+- Verify patch path matches import path in the code under test
+- Use `AsyncMock` for async functions, not regular `Mock`
+- Check that mock is set up before calling the function
 
-❌ **Testing implementation details**
-```python
-# Bad: Testing internal structure
-assert service._cache["key"] == value
-```
+**Async test failures:**
+- Add `@pytest.mark.asyncio` decorator
+- Use `AsyncMock` for async dependencies
+- Ensure `pytest-asyncio` is installed
 
-✅ **Test behavior**
-```python
-# Good: Testing observable behavior
-assert service.get("key") == value
-```
-
-❌ **Multiple responsibilities per test**
-```python
-# Bad: Testing too much
-def test_everything():
-    test_upload()
-    test_download()
-    test_delete()
-```
-
-✅ **One scenario per test**
-```python
-# Good: Focused tests
-def test_upload_success(): ...
-def test_download_returns_content(): ...
-def test_delete_removes_file(): ...
-```
-
-❌ **Real I/O in unit tests**
-```python
-# Bad: Actually writing files
-with open("test.txt", "w") as f:
-    f.write("data")
-```
-
-✅ **Mock I/O operations**
-```python
-# Good: Mocked I/O
-with patch("builtins.open", mock_open()):
-    # test code
-```
+**Fixture not found:**
+- Check fixture is defined in `conftest.py` or same file
+- Verify fixture name matches parameter name exactly
+- Check fixture scope (function, module, session)
