@@ -5,7 +5,9 @@ import structlog
 from app.infrastructure.logging.config import configure_logging
 from app.infrastructure.config.settings import Settings
 from app.adapter.driver.event_listeners.diagram_upload_listener import DiagramUploadListener
-from app.core.application.services.diagram_upload_processor import process_diagram_upload
+from app.adapter.driven.persistence.s3_file_storage import S3FileStorage
+from app.adapter.driven.conversion.pdf2image_converter import Pdf2ImageConverter
+from app.core.application.services.diagram_upload_processor import DiagramUploadProcessor
 
 
 def main() -> None:
@@ -16,7 +18,7 @@ def main() -> None:
     try:
         settings = Settings()
     except Exception as exc:
-        print("Missing required configuration. Ensure SQS_QUEUE_URL is set in the environment or .env file.")
+        print("Missing required configuration. Ensure SQS_QUEUE_URL and S3_BUCKET_NAME are set in the environment or .env file.")
         raise
 
     # Create infrastructure clients
@@ -29,13 +31,24 @@ def main() -> None:
             client_kwargs["aws_secret_access_key"] = "test"
     
     sqs_client = boto3.client("sqs", **client_kwargs)
+    s3_client = boto3.client("s3", **client_kwargs)
+
+    # Create driven adapters (outbound ports)
+    file_storage = S3FileStorage(s3_client=s3_client, bucket_name=settings.S3_BUCKET_NAME)
+    image_converter = Pdf2ImageConverter()
+
+    # Create application service with injected dependencies
+    processor = DiagramUploadProcessor(
+        file_storage=file_storage,
+        image_converter=image_converter
+    )
 
     # Create driver adapter with all dependencies injected
     logger.info("starting.diagram-analyzer-service")
     listener = DiagramUploadListener(
         queue_url=settings.SQS_QUEUE_URL,
         sqs_client=sqs_client,
-        processor=process_diagram_upload,
+        processor=processor.process,
     )
 
     try:

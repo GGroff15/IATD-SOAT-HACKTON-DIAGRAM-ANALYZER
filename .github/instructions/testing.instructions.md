@@ -1,5 +1,5 @@
 ---
-description: Testing guidelines, structure, and when to use testing skills
+description: Testing guidelines, structure, and when to use testing skills, must be used to create tests for the project before write production code.
 applyTo: 'tests/**/*.py'
 ---
 

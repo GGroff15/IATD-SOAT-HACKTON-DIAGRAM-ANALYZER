@@ -8,3 +8,19 @@ class InvalidMessageError(DiagramAnalyzerException):
 
 class ProcessingError(DiagramAnalyzerException):
     """Raised when processing of a valid message fails."""
+
+
+class FileNotFoundError(DiagramAnalyzerException):
+    """Raised when a file cannot be found in storage."""
+
+
+class FileStorageError(DiagramAnalyzerException):
+    """Raised when a file storage operation fails."""
+
+
+class ImageConversionError(DiagramAnalyzerException):
+    """Raised when image conversion fails."""
+
+
+class UnsupportedFileFormatError(DiagramAnalyzerException):
+    """Raised when a file format is not supported for conversion."""

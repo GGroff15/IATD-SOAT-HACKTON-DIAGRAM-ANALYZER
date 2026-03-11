@@ -34,10 +34,12 @@ class DiagramUploadListener(SQSListener):
 
         diagram_id = payload.get("diagramUploadId") or payload.get("diagram_upload_id")
         folder = payload.get("folder")
+        extension = payload.get("extension", ".pdf")  # Optional, defaults to .pdf
+        
         if not diagram_id:
             raise InvalidMessageError("missing diagramUploadId")
 
-        upload = DiagramUpload(diagram_id, folder)
+        upload = DiagramUpload(diagram_id, folder, extension=extension)
         set_correlation_id(str(upload.diagram_upload_id))
         try:
             asyncio.run(self.processor(upload))
