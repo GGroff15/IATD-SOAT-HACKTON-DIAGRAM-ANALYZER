@@ -6,7 +6,30 @@ argument-hint: 'Specify workflow: persistence, events, full-workflow, or adapter
 
 # Integration Testing for Hexagonal Architecture
 
-Test interactions between components using real implementations where practical, verifying that layers work together correctly.
+Test interactions between components using real implementations for layers under test. **Mock dependencies that aren't part of the integration** to keep tests fast, focused, and maintainable.
+
+## Core Principle
+
+**Integration tests verify specific layer interactions, not everything at once.**
+
+- Test the integration between 2-3 components
+- Use real implementations ONLY for the layers being tested
+- Mock all other dependencies (other layers, external services)
+- Keep tests fast (<100ms) by minimizing external calls
+
+**Example:** When testing `DiagramUploadListener` (driver adapter):
+- ✅ Real: Listener code, SQS client (testcontainers), message parsing
+- ❌ Mock: Processor (application layer), Repository, Event publishers
+
+This isolates what you're testing and prevents test failures from unrelated components.
+
+## Benefits of Mocking Non-Tested Layers
+
+1. **Faster tests:** No waiting for slow operations or external services
+2. **Focused failures:** Test fails only when the integration under test breaks
+3. **Easier debugging:** Smaller scope makes issues easier to identify
+4. **Better isolation:** Changes to mocked layers don't break these tests
+5. **Predictable:** Mocks provide consistent, deterministic behavior
 
 ## When to Use This Skill
 
@@ -23,8 +46,22 @@ Test interactions between components using real implementations where practical,
 | Test Type | Scope | Dependencies | Speed | When to Use |
 |-----------|-------|--------------|-------|-------------|
 | **Unit** | Single class/function | All mocked | Very fast (<10ms) | Test logic in isolation |
-| **Integration** | Multiple components | Real implementations (temp resources) | Fast (10-100ms) | Test component interactions |
+| **Integration** | Multiple components | Real for layers under test, mock external | Fast (10-100ms) | Test component interactions |
 | **E2E** | Full system | External services | Slow (100ms-1s+) | Test through API/UI |
+
+## Key Principle: Mock What You Don't Test
+
+**Integration tests verify specific layer interactions, not everything at once.**
+
+✅ **Keep Real:** Components and layers being tested
+❌ **Mock:** External dependencies, other layers not under test, slow operations
+
+**Example:** Testing `DiagramUploadListener` → `DiagramUploadProcessor`
+- ✅ Real: Listener, SQS message parsing, entity creation
+- ❌ Mock: Processor implementation (mocked with AsyncMock)
+- ✅ Real: SQS client (but using testcontainers/localstack)
+
+This isolates the integration being tested while keeping tests fast and focused.
 
 ## Structure
 
@@ -55,15 +92,27 @@ Ask: "What workflow am I testing across which layers?"
 
 ### Step 2: Determine Real vs Mock Components
 
+**Golden Rule:** Only use real implementations for the layers you're integrating. Mock everything else.
+
 Use **real implementations** for:
-- ✅ Components under test (services, repositories)
-- ✅ Domain entities and value objects
-- ✅ In-process resources (temp files, in-memory stores)
+- ✅ The specific layers being integrated (e.g., adapter + application)
+- ✅ Domain entities and value objects (always real - they're POJOs)
+- ✅ In-process test resources (temp files, in-memory stores, testcontainers)
 
 Use **mocks** for:
-- ❌ External services (AWS, APIs, databases)
-- ❌ Slow operations
-- ❌ Components not part of the integration being tested
+- ❌ Layers NOT part of the integration (if testing listener→service, mock the repository)
+- ❌ External services (AWS, APIs, databases - unless using testcontainers)
+- ❌ Slow operations (network calls, heavy computations)
+- ❌ Side effects you want to verify but not execute (event publishing, notifications)
+
+**Example Scenarios:**
+
+| Integration Under Test | Keep Real | Mock |
+|------------------------|-----------|------|
+| **Listener → Processor** | Listener, SQS client (testcontainers), entity parsing | Processor business logic, repositories, event publishers |
+| **Service → Repository** | Service logic, repository implementation, temp file storage | Event publishers, external APIs, notifications |
+| **Service → Event Publisher** | Service logic, event publisher | Repository (or use in-memory), external services |
+| **Full workflow: Listener → Service → Repository** | All layers, temp storage | Only external services outside the app |
 
 ### Step 3: Set Up Temporary Resources
 
@@ -84,6 +133,79 @@ def temp_storage(tmp_path):
 Follow the AAA pattern with realistic workflows.
 
 ## Layer Integration Patterns
+
+### Pattern 0: Driver Adapter in Isolation (Mock Downstream Layers)
+
+Test driver adapters (event listeners, API controllers) WITHOUT testing application/domain layers.
+
+**Purpose:** Verify adapter correctly receives input, parses it, and calls the application layer.
+
+```python
+# tests/integration/test_diagram_upload_listener.py
+import json
+import threading
+import time
+from unittest.mock import AsyncMock
+from uuid import uuid4
+
+from app.adapter.driver.event_listeners.diagram_upload_listener import DiagramUploadListener
+
+
+def test_diagram_upload_listener_integration(sqs_client):
+    """Test listener receives SQS messages and calls processor correctly."""
+    # Arrange - Real SQS client (testcontainers), mocked processor
+    q = sqs_client.create_queue(QueueName="test-diagram-queue")
+    queue_url = q["QueueUrl"]
+    
+    # Mock the processor - we're NOT testing application logic here
+    mock_processor = AsyncMock()
+    
+    listener = DiagramUploadListener(
+        queue_url=queue_url,
+        sqs_client=sqs_client,
+        processor=mock_processor,  # ← Mocked downstream dependency
+    )
+    
+    t = threading.Thread(target=listener.start, daemon=True)
+    t.start()
+    
+    try:
+        # Act - Send message
+        diagram_upload_id = str(uuid4())
+        body = {"diagramUploadId": diagram_upload_id, "folder": "integration-folder"}
+        sqs_client.send_message(QueueUrl=queue_url, MessageBody=json.dumps(body))
+        
+        time.sleep(3)
+        
+        # Assert - Message consumed from queue
+        attrs = sqs_client.get_queue_attributes(
+            QueueUrl=queue_url,
+            AttributeNames=["ApproximateNumberOfMessages"]
+        )
+        approx = int(attrs.get("Attributes", {}).get("ApproximateNumberOfMessages", 0))
+        assert approx == 0
+        
+        # Assert - Processor called with correct entity
+        mock_processor.assert_called_once()
+        upload_entity = mock_processor.call_args[0][0]
+        assert str(upload_entity.diagram_upload_id) == diagram_upload_id
+        assert upload_entity.folder == "integration-folder"
+    finally:
+        listener.stop()
+        t.join(timeout=5)
+```
+
+**What this tests:**
+- ✅ SQS message polling and retrieval
+- ✅ JSON parsing and validation
+- ✅ Entity creation from message data
+- ✅ Calling the processor with correct parameters
+- ✅ Message deletion after processing
+
+**What this doesn't test (by design):**
+- ❌ Processor business logic (tested in application layer tests)
+- ❌ Repository operations (tested in persistence integration tests)
+- ❌ Domain validation logic (tested in unit tests)
 
 ### Pattern 1: Application + Driven Adapter (Persistence)
 
@@ -184,15 +306,15 @@ async def test_concurrent_uploads_all_persist(diagram_service):
 
 ### Pattern 2: Application + Driven Adapter (Event Publishing)
 
-Test that events are published correctly during workflows.
+Test that events are published correctly during workflows. Mock repository since persistence isn't being tested.
 
 ```python
 # tests/integration/test_event_publishing_workflow.py
 import pytest
-from unittest.mock import Mock, call
+from unittest.mock import Mock, AsyncMock, call
 from datetime import datetime
 from app.core.application.services.diagram_service import DiagramService
-from app.adapter.driven.persistence.file_repository import FileRepository
+from app.core.domain.entities.diagram import Diagram
 
 @pytest.fixture
 def event_publisher_spy():
@@ -200,15 +322,27 @@ def event_publisher_spy():
     return Mock()
 
 @pytest.fixture
-def diagram_service_with_events(tmp_path, event_publisher_spy):
-    """Provide service with real repo and event publisher spy."""
-    repo = FileRepository(base_path=str(tmp_path / "diagrams"))
-    return DiagramService(repo, event_publisher_spy)
+def mock_repository():
+    """Mock repository since we're testing events, not persistence."""
+    repo = AsyncMock()
+    # Configure mock to return diagrams as needed
+    repo.save.return_value = None
+    repo.get.return_value = Diagram(id="test-id", content=b"data", format="PNG")
+    return repo
+
+@pytest.fixture
+def diagram_service_with_events(mock_repository, event_publisher_spy):
+    """Provide service with MOCKED repo and REAL event publisher spy."""
+    return DiagramService(
+        repository=mock_repository,  # ← Mocked - not testing persistence
+        event_publisher=event_publisher_spy  # ← Real spy - testing events
+    )
 
 @pytest.mark.asyncio
 async def test_upload_publishes_diagram_uploaded_event(
     diagram_service_with_events,
-    event_publisher_spy
+    event_publisher_spy,
+    mock_repository
 ):
     """Test that uploading a diagram publishes the correct event."""
     # Act
@@ -217,7 +351,7 @@ async def test_upload_publishes_diagram_uploaded_event(
         "PNG"
     )
     
-    # Assert
+    # Assert - Event published
     event_publisher_spy.publish.assert_called_once_with(
         "diagram.uploaded",
         {
@@ -226,6 +360,9 @@ async def test_upload_publishes_diagram_uploaded_event(
             "timestamp": pytest.approx(datetime.now(), abs=1)
         }
     )
+    
+    # Assert - Repository called (integration verified)
+    mock_repository.save.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_full_workflow_publishes_multiple_events(
@@ -250,6 +387,8 @@ async def test_full_workflow_publishes_multiple_events(
     assert calls[1][0][1]["diagram_id"] == diagram.id
     assert calls[1][0][1]["result"] is not None
 ```
+
+**Key Point:** Repository is mocked because we're testing the application→event_publisher integration, not persistence.
 
 ### Pattern 3: Driver + Application + Driven (Full Inbound Workflow)
 
@@ -373,6 +512,172 @@ async def test_diagram_archived_to_remote_after_analysis(multi_adapter_service):
     s3_client = multi_adapter_service.remote_storage
     s3_client.upload.assert_called_once()
 ```
+
+## Common Mocking Patterns for Integration Tests
+
+### AsyncMock for Async Dependencies
+
+Always use `AsyncMock` for async functions/methods:
+
+```python
+from unittest.mock import AsyncMock
+
+# ❌ Wrong - will fail with "coroutine expected" error
+mock_processor = Mock()
+
+# ✅ Correct - for async functions
+mock_processor = AsyncMock()
+mock_processor.return_value = some_value  # Configure return
+
+# Using it
+listener = DiagramUploadListener(
+    queue_url=queue_url,
+    sqs_client=sqs_client,
+    processor=mock_processor  # async callable
+)
+```
+
+### Mock Repository Pattern
+
+When testing application services without persistence:
+
+```python
+from unittest.mock import AsyncMock
+from app.core.domain.entities.diagram import Diagram
+
+@pytest.fixture
+def mock_repository():
+    """Mock repository for testing application logic."""
+    repo = AsyncMock()
+    
+    # Configure common operations
+    repo.save.return_value = None
+    repo.get.return_value = Diagram(id="test-123", content=b"data", format="PNG")
+    repo.find_all.return_value = []
+    repo.delete.return_value = None
+    
+    return repo
+
+# Use in test
+async def test_service_with_mocked_repo(mock_repository):
+    service = DiagramService(repository=mock_repository, event_publisher=Mock())
+    
+    # Test application logic
+    await service.some_operation()
+    
+    # Verify repository was called correctly
+    mock_repository.save.assert_called_once()
+```
+
+### Mock Event Publisher Pattern
+
+When testing without event side effects:
+
+```python
+from unittest.mock import Mock
+
+@pytest.fixture
+def mock_event_publisher():
+    """Mock event publisher to verify events without publishing."""
+    publisher = Mock()
+    publisher.publish.return_value = None
+    return publisher
+
+# Use in test
+async def test_service_with_mocked_events(mock_event_publisher):
+    service = DiagramService(
+        repository=some_repo,
+        event_publisher=mock_event_publisher
+    )
+    
+    await service.upload_diagram(b"data", "PNG")
+    
+    # Verify event was published
+    mock_event_publisher.publish.assert_called_once_with(
+        "diagram.uploaded",
+        {"diagram_id": "...", "format": "PNG"}
+    )
+```
+
+### Spy Pattern (Track Calls on Real Objects)
+
+When you need to verify calls but keep real behavior:
+
+```python
+from unittest.mock import Mock
+
+@pytest.fixture
+def event_publisher_spy():
+    """Spy to track events while still 'publishing' them."""
+    spy = Mock()
+    spy.published_events = []
+    
+    def track_and_publish(event_type, payload):
+        spy.published_events.append((event_type, payload))
+        # Could also call real publisher here if needed
+    
+    spy.publish.side_effect = track_and_publish
+    return spy
+
+# Use in test
+async def test_with_spy(event_publisher_spy):
+    service = DiagramService(repository=repo, event_publisher=event_publisher_spy)
+    
+    await service.upload_diagram(b"data", "PNG")
+    
+    # Check tracked events
+    assert len(event_publisher_spy.published_events) == 1
+    assert event_publisher_spy.published_events[0][0] == "diagram.uploaded"
+```
+
+### Partial Mocking (Some Methods Real, Some Mocked)
+
+When you want mostly real behavior with selective mocking:
+
+```python
+from unittest.mock import patch
+
+async def test_with_partial_mock(real_repository):
+    """Test with real repository but mock slow operations."""
+    
+    # Real repository but mock one slow method
+    with patch.object(real_repository, 'expensive_operation', return_value='mocked'):
+        service = DiagramService(repository=real_repository)
+        
+        result = await service.do_something()
+        
+        # Most operations use real repo, expensive one is mocked
+        assert result is not None
+```
+
+## Decision Tree: What to Mock?
+
+```
+Is the component part of the integration you're testing?
+│
+├─ YES → Keep it real
+│   │
+│   └─ Does it need external services?
+│       │
+│       ├─ YES → Use testcontainers or in-memory alternative
+│       └─ NO → Use real implementation
+│
+└─ NO → Mock it
+    │
+    └─ Is it async?
+        │
+        ├─ YES → Use AsyncMock
+        └─ NO → Use Mock
+```
+
+**Examples:**
+
+| Test Focus | Real | Mock |
+|------------|------|------|
+| Testing listener parsing | Listener, SQS (testcontainers) | Processor, repository, events |
+| Testing service logic | Service | Repository, event publisher, external APIs |
+| Testing persistence | Service, repository, temp storage | Event publisher, external APIs |
+| Testing full workflow | All app layers, temp storage | Only true external services |
 
 ## Integration Test Fixtures
 

@@ -153,6 +153,8 @@ Create shared fixtures in `tests/conftest.py` for common test setup. Layer-speci
 
 ## Running Tests
 
+Always run tests with coverage to ensure quality. Use pytest for unit/integration and behave for BDD tests.
+
 ### Pytest (Unit/Integration/E2E)
 
 ```bash

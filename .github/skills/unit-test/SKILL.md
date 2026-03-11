@@ -8,6 +8,8 @@ argument-hint: 'Specify layer: domain, application, driver, or driven'
 
 Write isolated, fast unit tests using pytest with proper mocking strategies for each architecture layer.
 
+Write tests before write production code to follow TDD principles. Focus on testing business logic in the domain layer without mocks, and orchestration logic in the application layer with mocked dependencies. For adapters, mock external resources to test adapter implementation in isolation.
+
 ## When to Use This Skill
 
 - Writing tests for new domain entities or value objects
