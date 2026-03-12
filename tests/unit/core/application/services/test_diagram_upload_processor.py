@@ -4,8 +4,9 @@ import pytest
 
 from app.core.domain.entities.diagram_upload import DiagramUpload
 from app.core.domain.entities.diagram_analysis_result import DiagramAnalysisResult
+from app.core.domain.entities.detected_component import DetectedComponent
 from app.core.application.services.diagram_upload_processor import DiagramUploadProcessor
-from app.core.application.exceptions import ImageConversionError, DiagramDetectionError
+from app.core.application.exceptions import ImageConversionError, DiagramDetectionError, TextExtractionError
 
 
 class MockFileStorage:
@@ -29,6 +30,12 @@ class MockDiagramDetector:
         ))
 
 
+class MockTextExtractor:
+    """Mock text extractor for testing"""
+    def __init__(self):
+        self.extract_text = Mock(return_value="")
+
+
 @pytest.mark.asyncio
 async def test_processor_downloads_file():
     """Test that processor calls file storage to download the file"""
@@ -37,10 +44,12 @@ async def test_processor_downloads_file():
     mock_storage = MockFileStorage()
     mock_converter = MockImageConverter()
     mock_detector = MockDiagramDetector()
+    mock_extractor = MockTextExtractor()
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        text_extractor=mock_extractor,
     )
     
     # Act
@@ -62,10 +71,12 @@ async def test_processor_with_custom_extension():
     mock_storage = MockFileStorage()
     mock_converter = MockImageConverter()
     mock_detector = MockDiagramDetector()
+    mock_extractor = MockTextExtractor()
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        text_extractor=mock_extractor,
     )
     
     # Act
@@ -89,10 +100,12 @@ async def test_processor_converts_file_after_download():
     mock_converter = MockImageConverter()
     mock_converter.convert_to_image.return_value = b"converted png bytes"
     mock_detector = MockDiagramDetector()
+    mock_extractor = MockTextExtractor()
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        text_extractor=mock_extractor,
     )
     
     # Act
@@ -114,10 +127,12 @@ async def test_processor_handles_conversion_error():
     mock_converter = MockImageConverter()
     mock_converter.convert_to_image.side_effect = ImageConversionError("Conversion failed")
     mock_detector = MockDiagramDetector()
+    mock_extractor = MockTextExtractor()
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        text_extractor=mock_extractor,
     )
     
     # Act & Assert
@@ -134,10 +149,12 @@ async def test_processor_with_jpg_extension():
     mock_storage.download_file.return_value = b"jpg image content"
     mock_converter = MockImageConverter()
     mock_detector = MockDiagramDetector()
+    mock_extractor = MockTextExtractor()
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        text_extractor=mock_extractor,
     )
     
     # Act
@@ -159,10 +176,12 @@ async def test_processor_calls_detector_after_conversion():
     mock_converter = MockImageConverter()
     mock_converter.convert_to_image.return_value = b"converted png bytes"
     mock_detector = MockDiagramDetector()
+    mock_extractor = MockTextExtractor()
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        text_extractor=mock_extractor,
     )
     
     # Act
@@ -184,10 +203,12 @@ async def test_processor_handles_detection_error():
     mock_converter = MockImageConverter()
     mock_detector = MockDiagramDetector()
     mock_detector.detect.side_effect = DiagramDetectionError("Detection failed")
+    mock_extractor = MockTextExtractor()
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        text_extractor=mock_extractor,
     )
     
     # Act & Assert
@@ -209,10 +230,12 @@ async def test_processor_completes_full_workflow():
         diagram_upload_id=upload.diagram_upload_id,
         components=tuple(),
     )
+    mock_extractor = MockTextExtractor()
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        text_extractor=mock_extractor,
     )
     
     # Act
@@ -222,3 +245,178 @@ async def test_processor_completes_full_workflow():
     mock_storage.download_file.assert_called_once()
     mock_converter.convert_to_image.assert_called_once()
     mock_detector.detect.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_processor_extracts_text_from_detected_components():
+    """Test that processor calls text extractor for each detected component"""
+    # Arrange
+    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    mock_storage = MockFileStorage()
+    mock_converter = MockImageConverter()
+    mock_converter.convert_to_image.return_value = b"converted png bytes"
+    
+    # Mock detector with two detected components
+    component1 = DetectedComponent(
+        class_name="button",
+        confidence=0.9,
+        x=100.0,
+        y=200.0,
+        width=150.0,
+        height=50.0,
+    )
+    component2 = DetectedComponent(
+        class_name="label",
+        confidence=0.85,
+        x=300.0,
+        y=400.0,
+        width=200.0,
+        height=30.0,
+    )
+    mock_detector = MockDiagramDetector()
+    mock_detector.detect.return_value = DiagramAnalysisResult(
+        diagram_upload_id=upload.diagram_upload_id,
+        components=(component1, component2),
+    )
+    
+    # Mock text extractor
+    mock_extractor = MockTextExtractor()
+    mock_extractor.extract_text.side_effect = ["Login Button", "Username"]
+    
+    processor = DiagramUploadProcessor(
+        file_storage=mock_storage,
+        image_converter=mock_converter,
+        diagram_detector=mock_detector,
+        text_extractor=mock_extractor,
+    )
+    
+    # Act
+    await processor.process(upload)
+    
+    # Assert - verify text extractor was called for each component
+    assert mock_extractor.extract_text.call_count == 2
+    
+    # Check first call
+    first_call = mock_extractor.extract_text.call_args_list[0]
+    assert first_call[1]["image_bytes"] == b"converted png bytes"
+    assert first_call[1]["x"] == 100.0
+    assert first_call[1]["y"] == 200.0
+    assert first_call[1]["width"] == 150.0
+    assert first_call[1]["height"] == 50.0
+    
+    # Check second call
+    second_call = mock_extractor.extract_text.call_args_list[1]
+    assert second_call[1]["image_bytes"] == b"converted png bytes"
+    assert second_call[1]["x"] == 300.0
+    assert second_call[1]["y"] == 400.0
+    assert second_call[1]["width"] == 200.0
+    assert second_call[1]["height"] == 30.0
+
+
+@pytest.mark.asyncio
+async def test_processor_enriches_components_with_extracted_text():
+    """Test that processor adds extracted text to detected components"""
+    # Arrange
+    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    mock_storage = MockFileStorage()
+    mock_converter = MockImageConverter()
+    mock_converter.convert_to_image.return_value = b"converted png bytes"
+    
+    component = DetectedComponent(
+        class_name="button",
+        confidence=0.9,
+        x=100.0,
+        y=200.0,
+        width=150.0,
+        height=50.0,
+    )
+    mock_detector = MockDiagramDetector()
+    mock_detector.detect.return_value = DiagramAnalysisResult(
+        diagram_upload_id=upload.diagram_upload_id,
+        components=(component,),
+    )
+    
+    mock_extractor = MockTextExtractor()
+    mock_extractor.extract_text.return_value = "Submit Button"
+    
+    processor = DiagramUploadProcessor(
+        file_storage=mock_storage,
+        image_converter=mock_converter,
+        diagram_detector=mock_detector,
+        text_extractor=mock_extractor,
+    )
+    
+    # Act
+    await processor.process(upload)
+    
+    # Assert - verify text extractor was called
+    mock_extractor.extract_text.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_processor_handles_ocr_error_gracefully():
+    """Test that processor continues when OCR fails for a component"""
+    # Arrange
+    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    mock_storage = MockFileStorage()
+    mock_converter = MockImageConverter()
+    mock_converter.convert_to_image.return_value = b"converted png bytes"
+    
+    component = DetectedComponent(
+        class_name="button",
+        confidence=0.9,
+        x=100.0,
+        y=200.0,
+        width=150.0,
+        height=50.0,
+    )
+    mock_detector = MockDiagramDetector()
+    mock_detector.detect.return_value = DiagramAnalysisResult(
+        diagram_upload_id=upload.diagram_upload_id,
+        components=(component,),
+    )
+    
+    # Mock text extractor to raise error
+    mock_extractor = MockTextExtractor()
+    mock_extractor.extract_text.side_effect = TextExtractionError("OCR failed")
+    
+    processor = DiagramUploadProcessor(
+        file_storage=mock_storage,
+        image_converter=mock_converter,
+        diagram_detector=mock_detector,
+        text_extractor=mock_extractor,
+    )
+    
+    # Act - should not raise exception, should log and continue
+    await processor.process(upload)
+    
+    # Assert - verify text extractor was called but error was handled
+    mock_extractor.extract_text.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_processor_handles_empty_components_list():
+    """Test that processor handles empty components list gracefully"""
+    # Arrange
+    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    mock_storage = MockFileStorage()
+    mock_converter = MockImageConverter()
+    mock_detector = MockDiagramDetector()
+    mock_detector.detect.return_value = DiagramAnalysisResult(
+        diagram_upload_id=upload.diagram_upload_id,
+        components=tuple(),
+    )
+    mock_extractor = MockTextExtractor()
+    
+    processor = DiagramUploadProcessor(
+        file_storage=mock_storage,
+        image_converter=mock_converter,
+        diagram_detector=mock_detector,
+        text_extractor=mock_extractor,
+    )
+    
+    # Act
+    await processor.process(upload)
+    
+    # Assert - text extractor should not be called when no components
+    mock_extractor.extract_text.assert_not_called()

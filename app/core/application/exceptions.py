@@ -28,3 +28,7 @@ class UnsupportedFileFormatError(DiagramAnalyzerException):
 
 class DiagramDetectionError(DiagramAnalyzerException):
     """Raised when diagram component detection fails."""
+
+
+class TextExtractionError(DiagramAnalyzerException):
+    """Raised when text extraction from image fails."""

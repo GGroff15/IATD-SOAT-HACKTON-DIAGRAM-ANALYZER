@@ -12,6 +12,7 @@ class DetectedComponent:
         y: Bounding box top-left y-coordinate (pixels)
         width: Bounding box width (pixels)
         height: Bounding box height (pixels)
+        extracted_text: Optional text extracted from the component via OCR
     """
     
     class_name: str
@@ -20,6 +21,7 @@ class DetectedComponent:
     y: float
     width: float
     height: float
+    extracted_text: str | None = None
     
     def __post_init__(self) -> None:
         """Validate the detected component attributes."""

@@ -120,3 +120,45 @@ def test_detected_component_zero_dimensions_allowed():
     )
     assert component.width == 0.0
     assert component.height == 0.0
+
+
+def test_detected_component_with_extracted_text():
+    """Test that DetectedComponent can store extracted text from OCR."""
+    component = DetectedComponent(
+        class_name="button",
+        confidence=0.9,
+        x=100.0,
+        y=200.0,
+        width=150.0,
+        height=50.0,
+        extracted_text="Login Button",
+    )
+    assert component.class_name == "button"
+    assert component.extracted_text == "Login Button"
+
+
+def test_detected_component_without_extracted_text():
+    """Test that extracted_text defaults to None when not provided."""
+    component = DetectedComponent(
+        class_name="icon",
+        confidence=0.85,
+        x=50.0,
+        y=100.0,
+        width=30.0,
+        height=30.0,
+    )
+    assert component.extracted_text is None
+
+
+def test_detected_component_with_empty_extracted_text():
+    """Test that empty string is allowed for extracted_text."""
+    component = DetectedComponent(
+        class_name="label",
+        confidence=0.75,
+        x=10.0,
+        y=20.0,
+        width=100.0,
+        height=25.0,
+        extracted_text="",
+    )
+    assert component.extracted_text == ""
