@@ -8,8 +8,10 @@ from app.adapter.driver.event_listeners.diagram_upload_listener import DiagramUp
 from app.adapter.driven.persistence.s3_file_storage import S3FileStorage
 from app.adapter.driven.conversion.pdf2image_converter import Pdf2ImageConverter
 from app.adapter.driven.detection.yolo_detector import YoloDetector
+from app.adapter.driven.detection.opencv_connection_detector import OpenCVConnectionDetector
 from app.adapter.driven.ocr.textract_ocr import TextractOCR
 from app.core.application.services.diagram_upload_processor import DiagramUploadProcessor
+from app.core.application.services.graph_builder_service import GraphBuilderService
 
 
 def main() -> None:
@@ -44,14 +46,18 @@ def main() -> None:
         confidence_threshold=settings.YOLO_CONFIDENCE_THRESHOLD,
         device=settings.YOLO_DEVICE,
     )
+    connection_detector = OpenCVConnectionDetector()
     text_extractor = TextractOCR(textract_client=textract_client)
+    graph_builder = GraphBuilderService()
 
     # Create application service with injected dependencies
     processor = DiagramUploadProcessor(
         file_storage=file_storage,
         image_converter=image_converter,
         diagram_detector=diagram_detector,
+        connection_detector=connection_detector,
         text_extractor=text_extractor,
+        graph_builder=graph_builder,
     )
 
     # Create driver adapter with all dependencies injected

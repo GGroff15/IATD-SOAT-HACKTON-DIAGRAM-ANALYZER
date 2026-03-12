@@ -5,8 +5,14 @@ import pytest
 from app.core.domain.entities.diagram_upload import DiagramUpload
 from app.core.domain.entities.diagram_analysis_result import DiagramAnalysisResult
 from app.core.domain.entities.detected_component import DetectedComponent
+from app.core.domain.entities.detected_connection import ConnectionType, DetectedConnection
 from app.core.application.services.diagram_upload_processor import DiagramUploadProcessor
-from app.core.application.exceptions import ImageConversionError, DiagramDetectionError, TextExtractionError
+from app.core.application.exceptions import (
+    ImageConversionError,
+    DiagramDetectionError,
+    TextExtractionError,
+    ConnectionDetectionError,
+)
 
 
 class MockFileStorage:
@@ -30,10 +36,25 @@ class MockDiagramDetector:
         ))
 
 
+class MockConnectionDetector:
+    """Mock connection detector for testing"""
+    def __init__(self):
+        self.detect = Mock(return_value=tuple())
+
+
 class MockTextExtractor:
     """Mock text extractor for testing"""
     def __init__(self):
         self.extract_text = Mock(return_value="")
+
+
+class MockGraphBuilder:
+    """Mock graph builder for testing"""
+    def __init__(self):
+        graph = Mock()
+        graph.node_count = 0
+        graph.edge_count = 0
+        self.build = Mock(return_value=graph)
 
 
 @pytest.mark.asyncio
@@ -44,12 +65,16 @@ async def test_processor_downloads_file():
     mock_storage = MockFileStorage()
     mock_converter = MockImageConverter()
     mock_detector = MockDiagramDetector()
+    mock_connection_detector = MockConnectionDetector()
     mock_extractor = MockTextExtractor()
+    mock_graph_builder = MockGraphBuilder()
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
     )
     
     # Act
@@ -71,12 +96,16 @@ async def test_processor_with_custom_extension():
     mock_storage = MockFileStorage()
     mock_converter = MockImageConverter()
     mock_detector = MockDiagramDetector()
+    mock_connection_detector = MockConnectionDetector()
     mock_extractor = MockTextExtractor()
+    mock_graph_builder = MockGraphBuilder()
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
     )
     
     # Act
@@ -100,12 +129,16 @@ async def test_processor_converts_file_after_download():
     mock_converter = MockImageConverter()
     mock_converter.convert_to_image.return_value = b"converted png bytes"
     mock_detector = MockDiagramDetector()
+    mock_connection_detector = MockConnectionDetector()
     mock_extractor = MockTextExtractor()
+    mock_graph_builder = MockGraphBuilder()
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
     )
     
     # Act
@@ -127,12 +160,16 @@ async def test_processor_handles_conversion_error():
     mock_converter = MockImageConverter()
     mock_converter.convert_to_image.side_effect = ImageConversionError("Conversion failed")
     mock_detector = MockDiagramDetector()
+    mock_connection_detector = MockConnectionDetector()
     mock_extractor = MockTextExtractor()
+    mock_graph_builder = MockGraphBuilder()
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
     )
     
     # Act & Assert
@@ -149,12 +186,16 @@ async def test_processor_with_jpg_extension():
     mock_storage.download_file.return_value = b"jpg image content"
     mock_converter = MockImageConverter()
     mock_detector = MockDiagramDetector()
+    mock_connection_detector = MockConnectionDetector()
     mock_extractor = MockTextExtractor()
+    mock_graph_builder = MockGraphBuilder()
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
     )
     
     # Act
@@ -176,12 +217,16 @@ async def test_processor_calls_detector_after_conversion():
     mock_converter = MockImageConverter()
     mock_converter.convert_to_image.return_value = b"converted png bytes"
     mock_detector = MockDiagramDetector()
+    mock_connection_detector = MockConnectionDetector()
     mock_extractor = MockTextExtractor()
+    mock_graph_builder = MockGraphBuilder()
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
     )
     
     # Act
@@ -203,12 +248,16 @@ async def test_processor_handles_detection_error():
     mock_converter = MockImageConverter()
     mock_detector = MockDiagramDetector()
     mock_detector.detect.side_effect = DiagramDetectionError("Detection failed")
+    mock_connection_detector = MockConnectionDetector()
     mock_extractor = MockTextExtractor()
+    mock_graph_builder = MockGraphBuilder()
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
     )
     
     # Act & Assert
@@ -230,12 +279,16 @@ async def test_processor_completes_full_workflow():
         diagram_upload_id=upload.diagram_upload_id,
         components=tuple(),
     )
+    mock_connection_detector = MockConnectionDetector()
     mock_extractor = MockTextExtractor()
+    mock_graph_builder = MockGraphBuilder()
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
     )
     
     # Act
@@ -282,12 +335,16 @@ async def test_processor_extracts_text_from_detected_components():
     # Mock text extractor
     mock_extractor = MockTextExtractor()
     mock_extractor.extract_text.side_effect = ["Login Button", "Username"]
+    mock_connection_detector = MockConnectionDetector()
+    mock_graph_builder = MockGraphBuilder()
     
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
     )
     
     # Act
@@ -338,12 +395,16 @@ async def test_processor_enriches_components_with_extracted_text():
     
     mock_extractor = MockTextExtractor()
     mock_extractor.extract_text.return_value = "Submit Button"
+    mock_connection_detector = MockConnectionDetector()
+    mock_graph_builder = MockGraphBuilder()
     
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
     )
     
     # Act
@@ -379,12 +440,16 @@ async def test_processor_handles_ocr_error_gracefully():
     # Mock text extractor to raise error
     mock_extractor = MockTextExtractor()
     mock_extractor.extract_text.side_effect = TextExtractionError("OCR failed")
+    mock_connection_detector = MockConnectionDetector()
+    mock_graph_builder = MockGraphBuilder()
     
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
     )
     
     # Act - should not raise exception, should log and continue
@@ -407,12 +472,16 @@ async def test_processor_handles_empty_components_list():
         components=tuple(),
     )
     mock_extractor = MockTextExtractor()
+    mock_connection_detector = MockConnectionDetector()
+    mock_graph_builder = MockGraphBuilder()
     
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
         diagram_detector=mock_detector,
+        connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
     )
     
     # Act
@@ -420,3 +489,161 @@ async def test_processor_handles_empty_components_list():
     
     # Assert - text extractor should not be called when no components
     mock_extractor.extract_text.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_processor_detects_connections_after_components():
+    """Test that processor calls connection detector after component detection"""
+    # Arrange
+    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    mock_storage = MockFileStorage()
+    mock_converter = MockImageConverter()
+    mock_converter.convert_to_image.return_value = b"converted png bytes"
+    
+    # Mock detector with detected components
+    component = DetectedComponent(
+        class_name="box",
+        confidence=0.9,
+        x=100.0,
+        y=200.0,
+        width=150.0,
+        height=50.0,
+    )
+    mock_detector = MockDiagramDetector()
+    mock_detector.detect.return_value = DiagramAnalysisResult(
+        diagram_upload_id=upload.diagram_upload_id,
+        components=(component,),
+    )
+    
+    # Mock connection detector
+    mock_connection_detector = MockConnectionDetector()
+    connection = DetectedConnection(
+        connection_type=ConnectionType.ARROW,
+        confidence=0.85,
+        start_point=(100.0, 200.0),
+        end_point=(300.0, 400.0),
+    )
+    mock_connection_detector.detect.return_value = (connection,)
+    
+    mock_extractor = MockTextExtractor()
+    mock_graph_builder = MockGraphBuilder()
+    
+    processor = DiagramUploadProcessor(
+        file_storage=mock_storage,
+        image_converter=mock_converter,
+        diagram_detector=mock_detector,
+        connection_detector=mock_connection_detector,
+        text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
+    )
+    
+    # Act
+    await processor.process(upload)
+    
+    # Assert - connection detector should be called with image and components
+    mock_connection_detector.detect.assert_called_once_with(
+        image_bytes=b"converted png bytes",
+        components=(component,),
+    )
+
+
+@pytest.mark.asyncio
+async def test_processor_handles_connection_detection_error_gracefully():
+    """Test that processor continues when connection detection fails"""
+    # Arrange
+    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    mock_storage = MockFileStorage()
+    mock_converter = MockImageConverter()
+    mock_converter.convert_to_image.return_value = b"converted png bytes"
+    
+    component = DetectedComponent(
+        class_name="box",
+        confidence=0.9,
+        x=100.0,
+        y=200.0,
+        width=150.0,
+        height=50.0,
+    )
+    mock_detector = MockDiagramDetector()
+    mock_detector.detect.return_value = DiagramAnalysisResult(
+        diagram_upload_id=upload.diagram_upload_id,
+        components=(component,),
+    )
+    
+    # Mock connection detector to raise error
+    mock_connection_detector = MockConnectionDetector()
+    mock_connection_detector.detect.side_effect = ConnectionDetectionError("Detection failed")
+    
+    mock_extractor = MockTextExtractor()
+    mock_graph_builder = MockGraphBuilder()
+    
+    processor = DiagramUploadProcessor(
+        file_storage=mock_storage,
+        image_converter=mock_converter,
+        diagram_detector=mock_detector,
+        connection_detector=mock_connection_detector,
+        text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
+    )
+    
+    # Act - should not raise exception, should log and continue
+    await processor.process(upload)
+    
+    # Assert - connection detector was called but error was handled
+    mock_connection_detector.detect.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_processor_builds_graph_from_final_result():
+    """Test that processor builds graph from the final analysis result."""
+    # Arrange
+    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    mock_storage = MockFileStorage()
+    mock_converter = MockImageConverter()
+    mock_converter.convert_to_image.return_value = b"converted png bytes"
+
+    component = DetectedComponent(
+        class_name="box",
+        confidence=0.9,
+        x=100.0,
+        y=200.0,
+        width=150.0,
+        height=50.0,
+    )
+    connection = DetectedConnection(
+        connection_type=ConnectionType.ARROW,
+        confidence=0.85,
+        start_point=(100.0, 200.0),
+        end_point=(300.0, 400.0),
+        source_component_index=0,
+        target_component_index=0,
+    )
+    mock_detector = MockDiagramDetector()
+    mock_detector.detect.return_value = DiagramAnalysisResult(
+        diagram_upload_id=upload.diagram_upload_id,
+        components=(component,),
+    )
+    mock_connection_detector = MockConnectionDetector()
+    mock_connection_detector.detect.return_value = (connection,)
+    mock_extractor = MockTextExtractor()
+    mock_graph_builder = MockGraphBuilder()
+
+    processor = DiagramUploadProcessor(
+        file_storage=mock_storage,
+        image_converter=mock_converter,
+        diagram_detector=mock_detector,
+        connection_detector=mock_connection_detector,
+        text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
+    )
+
+    # Act
+    await processor.process(upload)
+
+    # Assert
+    assert mock_graph_builder.build.call_count == 1
+    build_arg = mock_graph_builder.build.call_args[0][0]
+    assert build_arg.diagram_upload_id == upload.diagram_upload_id
+    assert build_arg.component_count == 1
+    assert build_arg.connection_count == 1
+

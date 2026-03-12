@@ -9,6 +9,13 @@ from app.core.application.exceptions import DiagramDetectionError
 from app.core.domain.entities.diagram_analysis_result import DiagramAnalysisResult
 
 
+def _mock_tensor(value):
+    """Return a tensor-like mock supporting .cpu().numpy() for adapter tests."""
+    tensor = MagicMock()
+    tensor.cpu.return_value.numpy.return_value = value
+    return tensor
+
+
 @pytest.fixture
 def sample_image_bytes():
     """Generate sample PNG image bytes for testing"""
@@ -66,9 +73,10 @@ def test_yolo_detector_detect_single_object(mock_yolo_model, sample_image_bytes)
     
     # Mock YOLO result with single detection
     mock_boxes = MagicMock()
-    mock_boxes.xyxy = [np.array([100.0, 150.0, 200.0, 250.0])]  # [x1, y1, x2, y2]
-    mock_boxes.conf = [np.array(0.85)]
-    mock_boxes.cls = [np.array(0)]  # class_id = 0
+    mock_boxes.xyxy = [_mock_tensor(np.array([100.0, 150.0, 200.0, 250.0]))]  # [x1, y1, x2, y2]
+    mock_boxes.conf = [_mock_tensor(np.array(0.85))]
+    mock_boxes.cls = [_mock_tensor(np.array(0))]  # class_id = 0
+    type(mock_boxes).__len__ = lambda self: 1
     
     mock_result = MagicMock()
     mock_result.boxes = mock_boxes
@@ -111,12 +119,13 @@ def test_yolo_detector_detect_multiple_objects(mock_yolo_model, sample_image_byt
     # Mock YOLO result with multiple detections
     mock_boxes = MagicMock()
     mock_boxes.xyxy = [
-        np.array([10.0, 20.0, 50.0, 80.0]),   # person
-        np.array([100.0, 120.0, 200.0, 220.0]),  # car
-        np.array([300.0, 350.0, 400.0, 450.0]),  # dog
+        _mock_tensor(np.array([10.0, 20.0, 50.0, 80.0])),  # person
+        _mock_tensor(np.array([100.0, 120.0, 200.0, 220.0])),  # car
+        _mock_tensor(np.array([300.0, 350.0, 400.0, 450.0])),  # dog
     ]
-    mock_boxes.conf = [np.array(0.92), np.array(0.78), np.array(0.65)]
-    mock_boxes.cls = [np.array(0), np.array(2), np.array(16)]
+    mock_boxes.conf = [_mock_tensor(np.array(0.92)), _mock_tensor(np.array(0.78)), _mock_tensor(np.array(0.65))]
+    mock_boxes.cls = [_mock_tensor(np.array(0)), _mock_tensor(np.array(2)), _mock_tensor(np.array(16))]
+    type(mock_boxes).__len__ = lambda self: 3
     
     mock_result = MagicMock()
     mock_result.boxes = mock_boxes

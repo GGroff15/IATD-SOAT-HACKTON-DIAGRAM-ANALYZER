@@ -2,11 +2,17 @@ import structlog
 
 from app.core.domain.entities.diagram_upload import DiagramUpload
 from app.core.domain.entities.detected_component import DetectedComponent
+from app.core.domain.entities.diagram_analysis_result import DiagramAnalysisResult
 from app.core.application.ports.file_storage import FileStorage
 from app.core.application.ports.image_converter import ImageConverter
 from app.core.application.ports.diagram_detector import DiagramDetector
+from app.core.application.ports.connection_detector import ConnectionDetector
 from app.core.application.ports.text_extractor import TextExtractor
-from app.core.application.exceptions import TextExtractionError
+from app.core.application.ports.graph_builder import GraphBuilder
+from app.core.application.exceptions import (
+    TextExtractionError,
+    ConnectionDetectionError,
+)
 
 logger = structlog.get_logger()
 
@@ -19,7 +25,9 @@ class DiagramUploadProcessor:
         file_storage: FileStorage,
         image_converter: ImageConverter,
         diagram_detector: DiagramDetector,
+        connection_detector: ConnectionDetector,
         text_extractor: TextExtractor,
+        graph_builder: GraphBuilder,
     ):
         """Initialize the processor with injected dependencies.
 
@@ -27,12 +35,16 @@ class DiagramUploadProcessor:
             file_storage: File storage adapter for downloading diagram files
             image_converter: Image converter adapter for normalizing file formats
             diagram_detector: Diagram detector adapter for identifying components
+            connection_detector: Connection detector adapter for identifying connections
             text_extractor: Text extractor adapter for extracting text via OCR
+            graph_builder: Graph builder service for constructing graph output
         """
         self.file_storage = file_storage
         self.image_converter = image_converter
         self.diagram_detector = diagram_detector
+        self.connection_detector = connection_detector
         self.text_extractor = text_extractor
+        self.graph_builder = graph_builder
 
     async def process(self, upload: DiagramUpload) -> None:
         """Process a diagram upload event by downloading and analyzing the diagram.
@@ -84,6 +96,26 @@ class DiagramUploadProcessor:
             component_count=analysis_result.component_count,
         )
         
+        # Detect connections between components
+        connections = tuple()
+        try:
+            connections = self.connection_detector.detect(
+                image_bytes=image_bytes,
+                components=analysis_result.components,
+            )
+            logger.info(
+                "diagram_upload.process.connections_detected",
+                diagram_upload_id=str(upload.diagram_upload_id),
+                connection_count=len(connections),
+            )
+        except ConnectionDetectionError as e:
+            logger.warning(
+                "diagram_upload.process.connection_detection_failed",
+                diagram_upload_id=str(upload.diagram_upload_id),
+                error=str(e),
+            )
+            # Continue processing with empty connections
+        
         # Extract text from each detected component
         enriched_components = []
         for component in analysis_result.components:
@@ -123,9 +155,21 @@ class DiagramUploadProcessor:
             )
             enriched_components.append(enriched_component)
         
+        # Create final analysis result with components and connections
+        final_result = DiagramAnalysisResult(
+            diagram_upload_id=upload.diagram_upload_id,
+            components=tuple(enriched_components),
+            connections=connections,
+        )
+
+        graph = self.graph_builder.build(final_result)
+        
         logger.info(
             "diagram_upload.process.completed",
             diagram_upload_id=str(upload.diagram_upload_id),
-            component_count=len(enriched_components),
+            component_count=final_result.component_count,
+            connection_count=final_result.connection_count,
             components_with_text=sum(1 for c in enriched_components if c.extracted_text),
+            graph_node_count=graph.node_count,
+            graph_edge_count=graph.edge_count,
         )

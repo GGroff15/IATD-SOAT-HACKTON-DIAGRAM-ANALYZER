@@ -30,5 +30,9 @@ class DiagramDetectionError(DiagramAnalyzerException):
     """Raised when diagram component detection fails."""
 
 
+class ConnectionDetectionError(DiagramAnalyzerException):
+    """Raised when connection detection fails."""
+
+
 class TextExtractionError(DiagramAnalyzerException):
     """Raised when text extraction from image fails."""
