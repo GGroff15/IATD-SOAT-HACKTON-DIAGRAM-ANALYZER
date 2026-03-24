@@ -1,10 +1,12 @@
 import os
+
 import boto3
 import structlog
+import uvicorn
 
+from app.adapter.driver.api.processing_start_endpoint import create_app
 from app.infrastructure.logging.config import configure_logging
 from app.infrastructure.config.settings import Settings
-from app.adapter.driver.event_listeners.diagram_upload_listener import DiagramUploadListener
 from app.adapter.driven.persistence.s3_file_storage import S3FileStorage
 from app.adapter.driven.conversion.pdf2image_converter import Pdf2ImageConverter
 from app.adapter.driven.detection.yolo_detector import YoloDetector
@@ -20,9 +22,9 @@ def main() -> None:
     logger = structlog.get_logger()
     
     try:
-        settings = Settings()
-    except Exception as exc:
-        print("Missing required configuration. Ensure SQS_QUEUE_URL and S3_BUCKET_NAME are set in the environment or .env file.")
+        settings = Settings()  # type: ignore[call-arg]
+    except Exception:
+        print("Missing required configuration. Ensure S3_BUCKET_NAME is set in the environment or .env file.")
         raise
 
     # Create infrastructure clients
@@ -34,7 +36,6 @@ def main() -> None:
             client_kwargs["aws_access_key_id"] = "test"
             client_kwargs["aws_secret_access_key"] = "test"
     
-    sqs_client = boto3.client("sqs", **client_kwargs)
     s3_client = boto3.client("s3", **client_kwargs)
     textract_client = boto3.client("textract", **client_kwargs)
 
@@ -60,19 +61,10 @@ def main() -> None:
         graph_builder=graph_builder,
     )
 
-    # Create driver adapter with all dependencies injected
-    logger.info("starting.diagram-analyzer-service")
-    listener = DiagramUploadListener(
-        queue_url=settings.SQS_QUEUE_URL,
-        sqs_client=sqs_client,
-        processor=processor.process,
-    )
+    app = create_app(processor=processor.process)
 
-    try:
-        listener.start()
-    except KeyboardInterrupt:
-        logger.info("shutdown.requested")
-        listener.stop()
+    logger.info("starting.diagram-analyzer-service")
+    uvicorn.run(app, host=settings.API_HOST, port=settings.API_PORT)
 
 
 if __name__ == "__main__":

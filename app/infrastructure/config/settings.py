@@ -4,9 +4,10 @@ from typing import Optional
 
 class Settings(BaseSettings):
     AWS_REGION: str = "us-east-1"
-    SQS_QUEUE_URL: str
     S3_BUCKET_NAME: str
     AWS_ENDPOINT_URL: Optional[str] = None
+    API_HOST: str = "0.0.0.0"
+    API_PORT: int = 8000
     
     # YOLO Detection Settings
     YOLO_MODEL_NAME: str = "yolov8n.pt"
