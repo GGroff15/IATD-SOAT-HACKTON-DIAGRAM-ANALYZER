@@ -12,6 +12,7 @@ from app.core.application.exceptions import (
     TextExtractionError,
     UnsupportedFileFormatError,
 )
+from app.core.application.ports.error_report_payload import ErrorReportPayload
 
 URN_NAMESPACE = "urn:diagram-analyzer:error"
 FALLBACK_PROBLEM_TYPE = f"{URN_NAMESPACE}:internal"
@@ -27,15 +28,6 @@ class ProblemDetails:
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
-
-
-@dataclass(frozen=True)
-class ErrorReportPayload:
-    classification: str
-    reason: str
-    path: str
-    timestamp: str
-    correlation_id: str | None
 
 
 @dataclass(frozen=True)

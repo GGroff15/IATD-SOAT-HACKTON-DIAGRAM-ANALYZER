@@ -7,11 +7,11 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StringConstraints
 
-from app.core.application.ports.error_report_publisher import ErrorReportPublisher
-from app.core.application.services.problem_details import (
+from app.adapter.driver.api.problem_details import (
     build_error_report_payload,
     map_exception_to_problem,
 )
+from app.core.application.ports.error_report_publisher import ErrorReportPublisher
 from app.core.domain.entities.diagram_upload import DiagramUpload
 from app.infrastructure.logging.correlation import clear_correlation_id, get_correlation_id, set_correlation_id
 

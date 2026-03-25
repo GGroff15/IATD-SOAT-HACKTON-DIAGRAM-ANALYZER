@@ -7,7 +7,7 @@ def localstack_container():
     """Session-scoped LocalStack container for integration tests"""
     container = (
         LocalStackContainer(image="localstack/localstack:latest")
-        .with_services("s3", "sqs")
+        .with_services("s3")
     )
     container.start()
     yield container
@@ -25,17 +25,5 @@ def s3_client(localstack_container):
             for obj in s3.list_objects_v2(Bucket=name).get("Contents", []) or []:
                 s3.delete_object(Bucket=name, Key=obj["Key"])
             s3.delete_bucket(Bucket=name)
-    except Exception:
-        pass
-
-
-@pytest.fixture
-def sqs_client(localstack_container):
-    sqs = localstack_container.get_client("sqs")
-    yield sqs
-    # cleanup queues
-    try:
-        for url in sqs.list_queues().get("QueueUrls", []) or []:
-            sqs.delete_queue(QueueUrl=url)
     except Exception:
         pass

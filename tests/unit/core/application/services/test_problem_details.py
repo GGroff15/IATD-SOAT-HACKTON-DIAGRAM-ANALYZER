@@ -1,5 +1,5 @@
 from app.core.application.exceptions import ProcessingError
-from app.core.application.services.problem_details import (
+from app.adapter.driver.api.problem_details import (
     FALLBACK_PROBLEM_TYPE,
     map_exception_to_problem,
 )

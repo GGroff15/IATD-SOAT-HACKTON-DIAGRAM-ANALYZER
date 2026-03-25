@@ -39,6 +39,6 @@ Response (`202 Accepted`):
 
 ## Migration Notes
 
-- The SQS listener is no longer the primary processing ingress path.
+- Legacy SQS listener ingress has been removed.
 - Upstream services must call `POST /processing-start` to trigger diagram processing.
 - `protocol` is used as the processing identifier and must match UUID format expected by current domain model.

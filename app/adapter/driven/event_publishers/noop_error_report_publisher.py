@@ -1,6 +1,6 @@
 import structlog
 
-from app.core.application.services.problem_details import ErrorReportPayload
+from app.core.application.ports.error_report_payload import ErrorReportPayload
 
 logger = structlog.get_logger()
 

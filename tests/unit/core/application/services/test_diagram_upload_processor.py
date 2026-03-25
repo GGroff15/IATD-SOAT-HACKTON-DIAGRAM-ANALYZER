@@ -57,6 +57,12 @@ class MockGraphBuilder:
         self.build = Mock(return_value=graph)
 
 
+class MockGraphResultPublisher:
+    """Mock graph result publisher for testing"""
+    def __init__(self):
+        self.publish_graph = AsyncMock()
+
+
 @pytest.mark.asyncio
 async def test_processor_downloads_file():
     """Test that processor calls file storage to download the file"""
@@ -587,7 +593,7 @@ async def test_processor_handles_connection_detection_error_gracefully():
 
 @pytest.mark.asyncio
 async def test_processor_builds_graph_from_final_result():
-    """Test that processor builds graph from the final analysis result."""
+    """Test that processor builds and publishes graph from final analysis result."""
     # Arrange
     upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf")
     mock_storage = MockFileStorage()
@@ -619,6 +625,7 @@ async def test_processor_builds_graph_from_final_result():
     mock_connection_detector.detect.return_value = (connection,)
     mock_extractor = MockTextExtractor()
     mock_graph_builder = MockGraphBuilder()
+    mock_graph_result_publisher = MockGraphResultPublisher()
 
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
@@ -627,6 +634,7 @@ async def test_processor_builds_graph_from_final_result():
         connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
         graph_builder=mock_graph_builder,
+        graph_result_publisher=mock_graph_result_publisher,
     )
 
     # Act
@@ -638,4 +646,7 @@ async def test_processor_builds_graph_from_final_result():
     assert build_arg.diagram_upload_id == upload.diagram_upload_id
     assert build_arg.component_count == 1
     assert build_arg.connection_count == 1
+    mock_graph_result_publisher.publish_graph.assert_awaited_once_with(
+        mock_graph_builder.build.return_value
+    )
 

@@ -13,6 +13,7 @@ from app.core.application.ports.image_converter import ImageConverter
 from app.core.application.ports.diagram_detector import DiagramDetector
 from app.core.application.ports.connection_detector import ConnectionDetector
 from app.core.application.ports.text_extractor import TextExtractor
+from app.core.application.ports.graph_result_publisher import GraphResultPublisher
 from app.core.application.ports.graph_builder import GraphBuilder
 
 logger = structlog.get_logger()
@@ -29,6 +30,7 @@ class DiagramUploadProcessor:
         connection_detector: ConnectionDetector,
         text_extractor: TextExtractor,
         graph_builder: GraphBuilder,
+        graph_result_publisher: GraphResultPublisher | None = None,
     ):
         """Initialize the processor with injected dependencies.
 
@@ -39,6 +41,7 @@ class DiagramUploadProcessor:
             connection_detector: Connection detector adapter for identifying connections
             text_extractor: Text extractor adapter for extracting text via OCR
             graph_builder: Graph builder service for constructing graph output
+            graph_result_publisher: Optional output adapter for graph publishing/persistence
         """
         self.file_storage = file_storage
         self.image_converter = image_converter
@@ -46,6 +49,7 @@ class DiagramUploadProcessor:
         self.connection_detector = connection_detector
         self.text_extractor = text_extractor
         self.graph_builder = graph_builder
+        self.graph_result_publisher = graph_result_publisher
 
     async def process(self, upload: DiagramUpload) -> None:
         """Process a diagram upload event by downloading and analyzing the diagram.
@@ -164,6 +168,9 @@ class DiagramUploadProcessor:
         )
 
         graph = self.graph_builder.build(final_result)
+
+        if self.graph_result_publisher is not None:
+            await self.graph_result_publisher.publish_graph(graph)
         
         logger.info(
             "diagram_upload.process.completed",

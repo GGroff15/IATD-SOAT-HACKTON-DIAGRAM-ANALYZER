@@ -4,6 +4,7 @@ import uvicorn
 
 from app.adapter.driver.api.processing_start_endpoint import create_app
 from app.adapter.driven.event_publishers.noop_error_report_publisher import NoOpErrorReportPublisher
+from app.adapter.driven.event_publishers.noop_graph_result_publisher import NoOpGraphResultPublisher
 from app.infrastructure.logging.config import configure_logging
 from app.infrastructure.config.settings import Settings
 from app.adapter.driven.persistence.s3_file_storage import S3FileStorage
@@ -47,6 +48,7 @@ def build_application():
     # Create driven adapters (outbound ports)
     file_storage = S3FileStorage(s3_client=s3_client, bucket_name=settings.S3_BUCKET_NAME)
     error_report_publisher = NoOpErrorReportPublisher()
+    graph_result_publisher = NoOpGraphResultPublisher()
     image_converter = Pdf2ImageConverter()
     diagram_detector = YoloDetector(
         model_name=settings.YOLO_MODEL_NAME,
@@ -65,6 +67,7 @@ def build_application():
         connection_detector=connection_detector,
         text_extractor=text_extractor,
         graph_builder=graph_builder,
+        graph_result_publisher=graph_result_publisher,
     )
 
     return create_app(

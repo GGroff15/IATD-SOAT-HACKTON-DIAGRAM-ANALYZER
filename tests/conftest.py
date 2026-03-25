@@ -7,7 +7,3 @@ def aws_region():
 @pytest.fixture
 def test_bucket():
     return "test-bucket"
-
-@pytest.fixture
-def test_queue():
-    return "test-queue"

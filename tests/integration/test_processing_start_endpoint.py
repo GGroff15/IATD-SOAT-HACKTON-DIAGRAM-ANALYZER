@@ -83,7 +83,7 @@ def test_processing_start_endpoint_triggers_processing_pipeline() -> None:
     converter.convert_to_image.assert_called_once_with(file_content=b"pdf-bytes", extension=".pdf")
 
 
-def test_processing_start_endpoint_does_not_require_sqs_listener() -> None:
+def test_processing_start_endpoint_uses_http_as_only_ingress() -> None:
     processor = AsyncMock()
     reporter = AsyncMock()
     client = TestClient(create_app(processor=processor, error_report_publisher=reporter))
