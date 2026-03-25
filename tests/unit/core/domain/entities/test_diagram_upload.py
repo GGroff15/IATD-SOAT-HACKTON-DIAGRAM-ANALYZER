@@ -9,6 +9,7 @@ def test_diagram_upload_valid():
     d = DiagramUpload(uid, "some-folder")
     assert str(d.diagram_upload_id) == str(uid)
     assert d.folder == "some-folder"
+    assert d.file_url is None
     assert d.extension == ".pdf"  # default
 
 
@@ -17,13 +18,23 @@ def test_diagram_upload_with_custom_extension():
     d = DiagramUpload(uid, "some-folder", extension=".png")
     assert str(d.diagram_upload_id) == str(uid)
     assert d.folder == "some-folder"
+    assert d.file_url is None
     assert d.extension == ".png"
 
 
-@pytest.mark.parametrize("folder", ["", "   ", None])
-def test_diagram_upload_invalid_folder(folder):
+def test_diagram_upload_valid_with_file_url_only():
     uid = uuid4()
-    with pytest.raises(ValueError, match="folder must be a non-empty string"):
+    d = DiagramUpload(uid, file_url="s3://bucket/path/diagram.pdf", extension=".pdf")
+    assert str(d.diagram_upload_id) == str(uid)
+    assert d.folder is None
+    assert d.file_url == "s3://bucket/path/diagram.pdf"
+    assert d.extension == ".pdf"
+
+
+@pytest.mark.parametrize("folder", ["", "   ", None])
+def test_diagram_upload_invalid_folder_without_file_url(folder):
+    uid = uuid4()
+    with pytest.raises(ValueError, match="either folder or file_url must be provided"):
         DiagramUpload(uid, folder)
 
 

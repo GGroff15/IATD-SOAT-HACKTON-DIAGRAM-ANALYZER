@@ -1,10 +1,9 @@
-import os
-
 import boto3
 import structlog
 import uvicorn
 
 from app.adapter.driver.api.processing_start_endpoint import create_app
+from app.adapter.driven.event_publishers.noop_error_report_publisher import NoOpErrorReportPublisher
 from app.infrastructure.logging.config import configure_logging
 from app.infrastructure.config.settings import Settings
 from app.adapter.driven.persistence.s3_file_storage import S3FileStorage
@@ -16,11 +15,10 @@ from app.core.application.services.diagram_upload_processor import DiagramUpload
 from app.core.application.services.graph_builder_service import GraphBuilderService
 
 
-def main() -> None:
-    """Composition root: wire all dependencies together."""
+def build_application():
+    """Composition root: wire all dependencies together and return the ASGI app."""
     configure_logging()
-    logger = structlog.get_logger()
-    
+
     try:
         settings = Settings()  # type: ignore[call-arg]
     except Exception:
@@ -29,10 +27,17 @@ def main() -> None:
 
     # Create infrastructure clients
     client_kwargs = {"region_name": settings.AWS_REGION}
+
+    if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
+        client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
+        client_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
+    if settings.AWS_SESSION_TOKEN:
+        client_kwargs["aws_session_token"] = settings.AWS_SESSION_TOKEN
+
     if settings.AWS_ENDPOINT_URL:
         client_kwargs["endpoint_url"] = settings.AWS_ENDPOINT_URL
-        # For LocalStack/local testing, provide dummy credentials if not present
-        if not os.environ.get("AWS_ACCESS_KEY_ID"):
+        # For LocalStack/local testing, provide dummy credentials if not configured
+        if "aws_access_key_id" not in client_kwargs:
             client_kwargs["aws_access_key_id"] = "test"
             client_kwargs["aws_secret_access_key"] = "test"
     
@@ -41,6 +46,7 @@ def main() -> None:
 
     # Create driven adapters (outbound ports)
     file_storage = S3FileStorage(s3_client=s3_client, bucket_name=settings.S3_BUCKET_NAME)
+    error_report_publisher = NoOpErrorReportPublisher()
     image_converter = Pdf2ImageConverter()
     diagram_detector = YoloDetector(
         model_name=settings.YOLO_MODEL_NAME,
@@ -61,10 +67,21 @@ def main() -> None:
         graph_builder=graph_builder,
     )
 
-    app = create_app(processor=processor.process)
+    return create_app(
+        processor=processor.process,
+        error_report_publisher=error_report_publisher,
+    ), settings
+
+
+app, _settings = build_application()
+
+
+def main() -> None:
+    """Run the API service using Uvicorn."""
+    logger = structlog.get_logger()
 
     logger.info("starting.diagram-analyzer-service")
-    uvicorn.run(app, host=settings.API_HOST, port=settings.API_PORT)
+    uvicorn.run(app, host=_settings.API_HOST, port=_settings.API_PORT)
 
 
 if __name__ == "__main__":

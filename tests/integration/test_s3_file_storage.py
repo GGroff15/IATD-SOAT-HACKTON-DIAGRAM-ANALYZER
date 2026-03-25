@@ -31,11 +31,7 @@ async def test_s3_download_file_success(s3_client, test_bucket):
     storage = S3FileStorage(s3_client=s3_client, bucket_name=test_bucket)
     
     # Act
-    result = await storage.download_file(
-        folder="folder-123",
-        filename="diagram-456",
-        extension=".pdf"
-    )
+    result = await storage.download_file(file_url=f"s3://{test_bucket}/folder-123/diagram-456.pdf")
     
     # Assert
     assert result == test_content
@@ -50,11 +46,7 @@ async def test_s3_download_file_not_found(s3_client, test_bucket):
     
     # Act & Assert
     with pytest.raises(FileNotFoundError, match="not found in bucket"):
-        await storage.download_file(
-            folder="missing-folder",
-            filename="missing-file",
-            extension=".pdf"
-        )
+        await storage.download_file(file_url=f"s3://{test_bucket}/missing-folder/missing-file.pdf")
 
 
 @pytest.mark.asyncio
@@ -74,13 +66,13 @@ async def test_s3_download_file_with_different_extensions(s3_client, test_bucket
         s3_client.put_object(Bucket=test_bucket, Key=key, Body=content)
     
     # Act & Assert
-    result_pdf = await storage.download_file("folder", "file1", ".pdf")
+    result_pdf = await storage.download_file(file_url=f"s3://{test_bucket}/folder/file1.pdf")
     assert result_pdf == b"pdf content"
     
-    result_png = await storage.download_file("folder", "file2", ".png")
+    result_png = await storage.download_file(file_url=f"s3://{test_bucket}/folder/file2.png")
     assert result_png == b"png content"
     
-    result_jpg = await storage.download_file("folder", "file3", ".jpg")
+    result_jpg = await storage.download_file(file_url=f"s3://{test_bucket}/folder/file3.jpg")
     assert result_jpg == b"jpg content"
 
 
@@ -100,9 +92,7 @@ async def test_s3_download_file_with_nested_folders(s3_client, test_bucket):
     
     # Act
     result = await storage.download_file(
-        folder="level1/level2/level3",
-        filename="diagram",
-        extension=".pdf"
+        file_url=f"s3://{test_bucket}/level1/level2/level3/diagram.pdf"
     )
     
     # Assert
@@ -117,8 +107,14 @@ async def test_s3_download_file_bucket_not_exists(s3_client):
     
     # Act & Assert
     with pytest.raises(FileStorageError, match="Failed to download file"):
-        await storage.download_file(
-            folder="folder",
-            filename="file",
-            extension=".pdf"
-        )
+        await storage.download_file(file_url="s3://non-existent-bucket/folder/file.pdf")
+
+
+@pytest.mark.asyncio
+async def test_s3_download_file_rejects_non_s3_uri(s3_client, test_bucket):
+    """Integration test: non-S3 URI fails with explicit validation error."""
+    _create_test_bucket(s3_client, test_bucket)
+    storage = S3FileStorage(s3_client=s3_client, bucket_name=test_bucket)
+
+    with pytest.raises(FileStorageError, match="Only s3:// URIs are supported"):
+        await storage.download_file(file_url="https://example.com/diagram.pdf")

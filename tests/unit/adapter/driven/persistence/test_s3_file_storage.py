@@ -28,11 +28,7 @@ async def test_download_file_success(s3_storage, mock_s3_client):
     mock_s3_client.get_object.return_value = mock_response
     
     # Act
-    result = await s3_storage.download_file(
-        folder="test-folder",
-        filename="test-file",
-        extension=".pdf"
-    )
+    result = await s3_storage.download_file(file_url="s3://test-bucket/test-folder/test-file.pdf")
     
     # Assert
     assert result == expected_content
@@ -53,11 +49,7 @@ async def test_download_file_not_found(s3_storage, mock_s3_client):
     
     # Act & Assert
     with pytest.raises(FileNotFoundError, match="not found in bucket"):
-        await s3_storage.download_file(
-            folder="test-folder",
-            filename="missing-file",
-            extension=".pdf"
-        )
+        await s3_storage.download_file(file_url="s3://test-bucket/test-folder/missing-file.pdf")
 
 
 @pytest.mark.asyncio
@@ -71,11 +63,7 @@ async def test_download_file_client_error(s3_storage, mock_s3_client):
     
     # Act & Assert
     with pytest.raises(FileStorageError, match="Failed to download file"):
-        await s3_storage.download_file(
-            folder="test-folder",
-            filename="test-file",
-            extension=".pdf"
-        )
+        await s3_storage.download_file(file_url="s3://test-bucket/test-folder/test-file.pdf")
 
 
 @pytest.mark.asyncio
@@ -86,11 +74,7 @@ async def test_download_file_generic_exception(s3_storage, mock_s3_client):
     
     # Act & Assert
     with pytest.raises(FileStorageError, match="Unexpected error during file download"):
-        await s3_storage.download_file(
-            folder="test-folder",
-            filename="test-file",
-            extension=".pdf"
-        )
+        await s3_storage.download_file(file_url="s3://test-bucket/test-folder/test-file.pdf")
 
 
 @pytest.mark.asyncio
@@ -102,14 +86,17 @@ async def test_download_file_constructs_correct_key(s3_storage, mock_s3_client):
     mock_s3_client.get_object.return_value = mock_response
     
     # Act
-    await s3_storage.download_file(
-        folder="my-folder/subfolder",
-        filename="diagram-123",
-        extension=".png"
-    )
+    await s3_storage.download_file(file_url="s3://test-bucket/my-folder/subfolder/diagram-123.png")
     
     # Assert
     mock_s3_client.get_object.assert_called_once_with(
         Bucket="test-bucket",
         Key="my-folder/subfolder/diagram-123.png"
     )
+
+
+@pytest.mark.asyncio
+async def test_download_file_rejects_non_s3_uri(s3_storage):
+    """Test non-S3 URIs are rejected with explicit storage error."""
+    with pytest.raises(FileStorageError, match="Only s3:// URIs are supported"):
+        await s3_storage.download_file(file_url="https://example.com/test.pdf")

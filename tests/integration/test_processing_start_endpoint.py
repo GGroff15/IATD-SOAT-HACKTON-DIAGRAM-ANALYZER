@@ -59,7 +59,8 @@ def test_processing_start_endpoint_triggers_processing_pipeline() -> None:
         text_extractor=extractor,
         graph_builder=graph_builder,
     )
-    client = TestClient(create_app(processor=processor.process))
+    reporter = AsyncMock()
+    client = TestClient(create_app(processor=processor.process, error_report_publisher=reporter))
 
     response = client.post(
         "/processing-start",
@@ -77,16 +78,15 @@ def test_processing_start_endpoint_triggers_processing_pipeline() -> None:
     assert response.json()["protocol"] == "550e8400-e29b-41d4-a716-446655440000"
 
     storage.download_file.assert_called_once_with(
-        folder="uploads/project-a",
-        filename="550e8400-e29b-41d4-a716-446655440000",
-        extension=".pdf",
+        file_url="s3://input-bucket/uploads/project-a/diagram.pdf"
     )
     converter.convert_to_image.assert_called_once_with(file_content=b"pdf-bytes", extension=".pdf")
 
 
 def test_processing_start_endpoint_does_not_require_sqs_listener() -> None:
     processor = AsyncMock()
-    client = TestClient(create_app(processor=processor))
+    reporter = AsyncMock()
+    client = TestClient(create_app(processor=processor, error_report_publisher=reporter))
 
     response = client.post(
         "/processing-start",
@@ -101,3 +101,29 @@ def test_processing_start_endpoint_does_not_require_sqs_listener() -> None:
 
     assert response.status_code == 202
     processor.assert_awaited_once()
+
+
+def test_processing_start_endpoint_returns_problem_details_with_expected_media_type() -> None:
+    processor = AsyncMock(side_effect=RuntimeError("unexpected internal error"))
+    reporter = AsyncMock()
+    client = TestClient(
+        create_app(processor=processor, error_report_publisher=reporter),
+        raise_server_exceptions=False,
+    )
+
+    response = client.post(
+        "/processing-start",
+        json={
+            "protocol": "550e8400-e29b-41d4-a716-446655440009",
+            "file": {
+                "url": "s3://input-bucket/uploads/project-a/diagram.pdf",
+                "mimetype": "application/pdf",
+            },
+        },
+    )
+
+    assert response.status_code == 500
+    assert response.headers["content-type"].startswith("application/problem+json")
+    body = response.json()
+    assert body["status"] == 500
+    assert body["instance"] == "/processing-start"

@@ -61,7 +61,7 @@ class MockGraphBuilder:
 async def test_processor_downloads_file():
     """Test that processor calls file storage to download the file"""
     # Arrange
-    upload = DiagramUpload(uuid4(), "folder-x", extension=".pdf")
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/folder-x/diagram.pdf", extension=".pdf")
     mock_storage = MockFileStorage()
     mock_converter = MockImageConverter()
     mock_detector = MockDiagramDetector()
@@ -81,18 +81,14 @@ async def test_processor_downloads_file():
     await processor.process(upload)
     
     # Assert
-    mock_storage.download_file.assert_called_once_with(
-        folder="folder-x",
-        filename=str(upload.diagram_upload_id),
-        extension=".pdf"
-    )
+    mock_storage.download_file.assert_called_once_with(file_url="s3://input-bucket/folder-x/diagram.pdf")
 
 
 @pytest.mark.asyncio
 async def test_processor_with_custom_extension():
     """Test that processor uses the correct extension"""
     # Arrange
-    upload = DiagramUpload(uuid4(), "my-folder", extension=".png")
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/my-folder/diagram.png", extension=".png")
     mock_storage = MockFileStorage()
     mock_converter = MockImageConverter()
     mock_detector = MockDiagramDetector()
@@ -112,18 +108,14 @@ async def test_processor_with_custom_extension():
     await processor.process(upload)
     
     # Assert
-    mock_storage.download_file.assert_called_once_with(
-        folder="my-folder",
-        filename=str(upload.diagram_upload_id),
-        extension=".png"
-    )
+    mock_storage.download_file.assert_called_once_with(file_url="s3://input-bucket/my-folder/diagram.png")
 
 
 @pytest.mark.asyncio
 async def test_processor_converts_file_after_download():
     """Test that processor calls image converter after downloading file"""
     # Arrange
-    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf")
     mock_storage = MockFileStorage()
     mock_storage.download_file.return_value = b"original pdf content"
     mock_converter = MockImageConverter()
@@ -155,7 +147,7 @@ async def test_processor_converts_file_after_download():
 async def test_processor_handles_conversion_error():
     """Test that processor handles image conversion errors gracefully"""
     # Arrange
-    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf")
     mock_storage = MockFileStorage()
     mock_converter = MockImageConverter()
     mock_converter.convert_to_image.side_effect = ImageConversionError("Conversion failed")
@@ -181,7 +173,7 @@ async def test_processor_handles_conversion_error():
 async def test_processor_with_jpg_extension():
     """Test that processor handles JPG files correctly"""
     # Arrange
-    upload = DiagramUpload(uuid4(), "images", extension=".jpg")
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/images/diagram.jpg", extension=".jpg")
     mock_storage = MockFileStorage()
     mock_storage.download_file.return_value = b"jpg image content"
     mock_converter = MockImageConverter()
@@ -212,7 +204,7 @@ async def test_processor_with_jpg_extension():
 async def test_processor_calls_detector_after_conversion():
     """Test that processor calls diagram detector after image conversion"""
     # Arrange
-    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf")
     mock_storage = MockFileStorage()
     mock_converter = MockImageConverter()
     mock_converter.convert_to_image.return_value = b"converted png bytes"
@@ -243,7 +235,7 @@ async def test_processor_calls_detector_after_conversion():
 async def test_processor_handles_detection_error():
     """Test that processor handles detection errors gracefully"""
     # Arrange
-    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf")
     mock_storage = MockFileStorage()
     mock_converter = MockImageConverter()
     mock_detector = MockDiagramDetector()
@@ -269,7 +261,7 @@ async def test_processor_handles_detection_error():
 async def test_processor_completes_full_workflow():
     """Test that processor completes the full workflow: download -> convert -> detect"""
     # Arrange
-    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf")
     mock_storage = MockFileStorage()
     mock_storage.download_file.return_value = b"original pdf content"
     mock_converter = MockImageConverter()
@@ -304,7 +296,7 @@ async def test_processor_completes_full_workflow():
 async def test_processor_extracts_text_from_detected_components():
     """Test that processor calls text extractor for each detected component"""
     # Arrange
-    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf")
     mock_storage = MockFileStorage()
     mock_converter = MockImageConverter()
     mock_converter.convert_to_image.return_value = b"converted png bytes"
@@ -374,7 +366,7 @@ async def test_processor_extracts_text_from_detected_components():
 async def test_processor_enriches_components_with_extracted_text():
     """Test that processor adds extracted text to detected components"""
     # Arrange
-    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf")
     mock_storage = MockFileStorage()
     mock_converter = MockImageConverter()
     mock_converter.convert_to_image.return_value = b"converted png bytes"
@@ -418,7 +410,7 @@ async def test_processor_enriches_components_with_extracted_text():
 async def test_processor_handles_ocr_error_gracefully():
     """Test that processor continues when OCR fails for a component"""
     # Arrange
-    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf")
     mock_storage = MockFileStorage()
     mock_converter = MockImageConverter()
     mock_converter.convert_to_image.return_value = b"converted png bytes"
@@ -463,7 +455,7 @@ async def test_processor_handles_ocr_error_gracefully():
 async def test_processor_handles_empty_components_list():
     """Test that processor handles empty components list gracefully"""
     # Arrange
-    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf")
     mock_storage = MockFileStorage()
     mock_converter = MockImageConverter()
     mock_detector = MockDiagramDetector()
@@ -495,7 +487,7 @@ async def test_processor_handles_empty_components_list():
 async def test_processor_detects_connections_after_components():
     """Test that processor calls connection detector after component detection"""
     # Arrange
-    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf")
     mock_storage = MockFileStorage()
     mock_converter = MockImageConverter()
     mock_converter.convert_to_image.return_value = b"converted png bytes"
@@ -551,7 +543,7 @@ async def test_processor_detects_connections_after_components():
 async def test_processor_handles_connection_detection_error_gracefully():
     """Test that processor continues when connection detection fails"""
     # Arrange
-    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf")
     mock_storage = MockFileStorage()
     mock_converter = MockImageConverter()
     mock_converter.convert_to_image.return_value = b"converted png bytes"
@@ -597,7 +589,7 @@ async def test_processor_handles_connection_detection_error_gracefully():
 async def test_processor_builds_graph_from_final_result():
     """Test that processor builds graph from the final analysis result."""
     # Arrange
-    upload = DiagramUpload(uuid4(), "test-folder", extension=".pdf")
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf")
     mock_storage = MockFileStorage()
     mock_converter = MockImageConverter()
     mock_converter.convert_to_image.return_value = b"converted png bytes"

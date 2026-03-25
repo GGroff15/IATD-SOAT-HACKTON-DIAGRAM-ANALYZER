@@ -1,5 +1,10 @@
 import structlog
 
+from app.core.application.exceptions import FileStorageError
+from app.core.application.exceptions import (
+    TextExtractionError,
+    ConnectionDetectionError,
+)
 from app.core.domain.entities.diagram_upload import DiagramUpload
 from app.core.domain.entities.detected_component import DetectedComponent
 from app.core.domain.entities.diagram_analysis_result import DiagramAnalysisResult
@@ -9,10 +14,6 @@ from app.core.application.ports.diagram_detector import DiagramDetector
 from app.core.application.ports.connection_detector import ConnectionDetector
 from app.core.application.ports.text_extractor import TextExtractor
 from app.core.application.ports.graph_builder import GraphBuilder
-from app.core.application.exceptions import (
-    TextExtractionError,
-    ConnectionDetectionError,
-)
 
 logger = structlog.get_logger()
 
@@ -56,19 +57,19 @@ class DiagramUploadProcessor:
             "diagram_upload.process.received",
             diagram_upload_id=str(upload.diagram_upload_id),
             folder=upload.folder,
+            file_url=upload.file_url,
             extension=upload.extension,
         )
-        
-        # Download the diagram file from storage
-        file_content = await self.file_storage.download_file(
-            folder=upload.folder,
-            filename=str(upload.diagram_upload_id),
-            extension=upload.extension,
-        )
+
+        if not upload.file_url:
+            raise FileStorageError("Diagram upload must include file_url for download")
+
+        file_content = await self.file_storage.download_file(file_url=upload.file_url)
         
         logger.info(
             "diagram_upload.process.downloaded",
             diagram_upload_id=str(upload.diagram_upload_id),
+            file_url=upload.file_url,
             size_bytes=len(file_content),
         )
         

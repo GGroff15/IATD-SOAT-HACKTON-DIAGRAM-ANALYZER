@@ -4,13 +4,11 @@ from typing import Protocol
 class FileStorage(Protocol):
     """Port for file storage operations (driven adapter interface)."""
 
-    async def download_file(self, folder: str, filename: str, extension: str) -> bytes:
+    async def download_file(self, file_url: str) -> bytes:
         """Download a file from storage.
 
         Args:
-            folder: The folder/prefix where the file is stored
-            filename: The base filename (without extension)
-            extension: The file extension (including the dot, e.g., '.pdf')
+            file_url: Direct storage locator. For S3, must be in s3://bucket/key format.
 
         Returns:
             The file content as bytes
