@@ -1,4 +1,6 @@
+import asyncio
 from collections.abc import Awaitable, Callable
+from contextvars import copy_context
 from typing import Annotated
 from uuid import UUID
 
@@ -77,6 +79,52 @@ def create_app(
     error_report_publisher: ErrorReportPublisher,
 ) -> FastAPI:
     app = FastAPI(title="Diagram Analyzer Service")
+    in_flight_tasks: set[asyncio.Task[None]] = set()
+
+    async def _process_upload_in_background(upload: DiagramUpload) -> None:
+        try:
+            await processor(upload)
+        except Exception as exc:
+            correlation_id = get_correlation_id()
+            problem, classification = map_exception_to_problem(exc=exc, instance="/processing-start")
+
+            logger.exception(
+                "http.processing_start.background_failed",
+                error_classification=classification,
+                path="/processing-start",
+                correlation_id=correlation_id,
+                status_code=problem.status,
+            )
+
+            payload = build_error_report_payload(
+                problem=problem,
+                classification=classification,
+                path="/processing-start",
+                correlation_id=correlation_id,
+            )
+
+            try:
+                await error_report_publisher.publish_error(payload)
+            except Exception:
+                logger.exception(
+                    "http.processing_start.background_error_report_publish_failed",
+                    error_classification=classification,
+                    path="/processing-start",
+                    correlation_id=correlation_id,
+                )
+        finally:
+            clear_correlation_id()
+
+    def _schedule_processing(upload: DiagramUpload) -> None:
+        context = copy_context()
+        coroutine = _process_upload_in_background(upload)
+        try:
+            task = context.run(asyncio.create_task, coroutine)
+        except Exception:
+            coroutine.close()
+            raise
+        in_flight_tasks.add(task)
+        task.add_done_callback(in_flight_tasks.discard)
 
     @app.exception_handler(Exception)
     async def handle_unexpected_exception(request: Request, exc: Exception) -> JSONResponse:
@@ -140,7 +188,7 @@ def create_app(
                 file_url=request.file.url,
                 diagram_upload_id=str(upload.diagram_upload_id),
             )
-            await processor(upload)
+            _schedule_processing(upload)
             return ProcessingStartResponse(status="accepted", protocol=request.protocol)
         finally:
             clear_correlation_id()

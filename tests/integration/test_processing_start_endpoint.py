@@ -1,11 +1,22 @@
 from unittest.mock import AsyncMock, Mock
+import time
 from uuid import UUID
 
 from fastapi.testclient import TestClient
 
+import app.adapter.driver.api.processing_start_endpoint as processing_start_endpoint
 from app.adapter.driver.api.processing_start_endpoint import create_app
 from app.core.application.services.diagram_upload_processor import DiagramUploadProcessor
 from app.core.domain.entities.diagram_analysis_result import DiagramAnalysisResult
+
+
+def _wait_for(condition, timeout: float = 1.0, interval: float = 0.01) -> bool:
+    deadline = time.perf_counter() + timeout
+    while time.perf_counter() < deadline:
+        if condition():
+            return True
+        time.sleep(interval)
+    return condition()
 
 
 class StubFileStorage:
@@ -77,6 +88,9 @@ def test_processing_start_endpoint_triggers_processing_pipeline() -> None:
     assert response.json()["status"] == "accepted"
     assert response.json()["protocol"] == "550e8400-e29b-41d4-a716-446655440000"
 
+    assert _wait_for(lambda: storage.download_file.call_count == 1)
+    assert _wait_for(lambda: converter.convert_to_image.call_count == 1)
+
     storage.download_file.assert_called_once_with(
         file_url="s3://input-bucket/uploads/project-a/diagram.pdf"
     )
@@ -100,12 +114,18 @@ def test_processing_start_endpoint_uses_http_as_only_ingress() -> None:
     )
 
     assert response.status_code == 202
-    processor.assert_awaited_once()
+    assert _wait_for(lambda: processor.await_count == 1)
 
 
-def test_processing_start_endpoint_returns_problem_details_with_expected_media_type() -> None:
-    processor = AsyncMock(side_effect=RuntimeError("unexpected internal error"))
+def test_processing_start_endpoint_returns_problem_details_with_expected_media_type(monkeypatch) -> None:
+    processor = AsyncMock()
     reporter = AsyncMock()
+
+    def _raise_runtime_error(*_args, **_kwargs):
+        raise RuntimeError("unexpected internal error")
+
+    monkeypatch.setattr(processing_start_endpoint.asyncio, "create_task", _raise_runtime_error)
+
     client = TestClient(
         create_app(processor=processor, error_report_publisher=reporter),
         raise_server_exceptions=False,
@@ -127,3 +147,4 @@ def test_processing_start_endpoint_returns_problem_details_with_expected_media_t
     body = response.json()
     assert body["status"] == 500
     assert body["instance"] == "/processing-start"
+    reporter.publish_error.assert_awaited_once()
