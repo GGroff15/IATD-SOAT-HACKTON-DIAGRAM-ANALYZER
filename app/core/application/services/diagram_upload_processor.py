@@ -10,7 +10,7 @@ from app.core.domain.entities.detected_component import DetectedComponent
 from app.core.domain.entities.diagram_analysis_result import DiagramAnalysisResult
 from app.core.application.ports.file_storage import FileStorage
 from app.core.application.ports.image_converter import ImageConverter
-from app.core.application.ports.diagram_detector import DiagramDetector
+from app.core.application.ports.diagram_detector import ComponentDetector
 from app.core.application.ports.connection_detector import ConnectionDetector
 from app.core.application.ports.text_extractor import TextExtractor
 from app.core.application.ports.graph_result_publisher import GraphResultPublisher
@@ -26,7 +26,7 @@ class DiagramUploadProcessor:
         self,
         file_storage: FileStorage,
         image_converter: ImageConverter,
-        diagram_detector: DiagramDetector,
+        component_detector: ComponentDetector,
         connection_detector: ConnectionDetector,
         text_extractor: TextExtractor,
         graph_builder: GraphBuilder,
@@ -37,7 +37,7 @@ class DiagramUploadProcessor:
         Args:
             file_storage: File storage adapter for downloading diagram files
             image_converter: Image converter adapter for normalizing file formats
-            diagram_detector: Diagram detector adapter for identifying components
+            component_detector: Component detector adapter for identifying components
             connection_detector: Connection detector adapter for identifying connections
             text_extractor: Text extractor adapter for extracting text via OCR
             graph_builder: Graph builder service for constructing graph output
@@ -45,7 +45,7 @@ class DiagramUploadProcessor:
         """
         self.file_storage = file_storage
         self.image_converter = image_converter
-        self.diagram_detector = diagram_detector
+        self.component_detector = component_detector
         self.connection_detector = connection_detector
         self.text_extractor = text_extractor
         self.graph_builder = graph_builder
@@ -90,7 +90,7 @@ class DiagramUploadProcessor:
         )
         
         # Detect components in the diagram
-        analysis_result = self.diagram_detector.detect(
+        analysis_result = self.component_detector.detect(
             diagram_upload_id=upload.diagram_upload_id,
             image_bytes=image_bytes,
         )

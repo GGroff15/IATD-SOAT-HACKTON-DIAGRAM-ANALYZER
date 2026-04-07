@@ -50,7 +50,7 @@ def build_application():
     error_report_publisher = NoOpErrorReportPublisher()
     graph_result_publisher = NoOpGraphResultPublisher()
     image_converter = Pdf2ImageConverter()
-    diagram_detector = YoloDetector(
+    component_detector = YoloDetector(
         model_name=settings.YOLO_MODEL_NAME,
         confidence_threshold=settings.YOLO_CONFIDENCE_THRESHOLD,
         device=settings.YOLO_DEVICE,
@@ -79,7 +79,7 @@ def build_application():
     processor = DiagramUploadProcessor(
         file_storage=file_storage,
         image_converter=image_converter,
-        diagram_detector=diagram_detector,
+        component_detector=component_detector,
         connection_detector=connection_detector,
         text_extractor=text_extractor,
         graph_builder=graph_builder,

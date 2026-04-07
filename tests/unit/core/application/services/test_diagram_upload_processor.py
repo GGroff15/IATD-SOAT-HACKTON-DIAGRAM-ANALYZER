@@ -77,7 +77,7 @@ async def test_processor_downloads_file():
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
-        diagram_detector=mock_detector,
+        component_detector=mock_detector,
         connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
         graph_builder=mock_graph_builder,
@@ -104,7 +104,7 @@ async def test_processor_with_custom_extension():
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
-        diagram_detector=mock_detector,
+        component_detector=mock_detector,
         connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
         graph_builder=mock_graph_builder,
@@ -133,7 +133,7 @@ async def test_processor_converts_file_after_download():
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
-        diagram_detector=mock_detector,
+        component_detector=mock_detector,
         connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
         graph_builder=mock_graph_builder,
@@ -164,7 +164,7 @@ async def test_processor_handles_conversion_error():
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
-        diagram_detector=mock_detector,
+        component_detector=mock_detector,
         connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
         graph_builder=mock_graph_builder,
@@ -190,7 +190,7 @@ async def test_processor_with_jpg_extension():
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
-        diagram_detector=mock_detector,
+        component_detector=mock_detector,
         connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
         graph_builder=mock_graph_builder,
@@ -221,7 +221,7 @@ async def test_processor_calls_detector_after_conversion():
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
-        diagram_detector=mock_detector,
+        component_detector=mock_detector,
         connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
         graph_builder=mock_graph_builder,
@@ -252,7 +252,7 @@ async def test_processor_handles_detection_error():
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
-        diagram_detector=mock_detector,
+        component_detector=mock_detector,
         connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
         graph_builder=mock_graph_builder,
@@ -283,7 +283,7 @@ async def test_processor_completes_full_workflow():
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
-        diagram_detector=mock_detector,
+        component_detector=mock_detector,
         connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
         graph_builder=mock_graph_builder,
@@ -339,7 +339,7 @@ async def test_processor_extracts_text_from_detected_components():
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
-        diagram_detector=mock_detector,
+        component_detector=mock_detector,
         connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
         graph_builder=mock_graph_builder,
@@ -399,7 +399,7 @@ async def test_processor_enriches_components_with_extracted_text():
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
-        diagram_detector=mock_detector,
+        component_detector=mock_detector,
         connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
         graph_builder=mock_graph_builder,
@@ -444,7 +444,7 @@ async def test_processor_handles_ocr_error_gracefully():
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
-        diagram_detector=mock_detector,
+        component_detector=mock_detector,
         connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
         graph_builder=mock_graph_builder,
@@ -476,7 +476,7 @@ async def test_processor_handles_empty_components_list():
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
-        diagram_detector=mock_detector,
+        component_detector=mock_detector,
         connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
         graph_builder=mock_graph_builder,
@@ -529,7 +529,7 @@ async def test_processor_detects_connections_after_components():
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
-        diagram_detector=mock_detector,
+        component_detector=mock_detector,
         connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
         graph_builder=mock_graph_builder,
@@ -578,7 +578,7 @@ async def test_processor_handles_connection_detection_error_gracefully():
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
-        diagram_detector=mock_detector,
+        component_detector=mock_detector,
         connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
         graph_builder=mock_graph_builder,
@@ -630,7 +630,7 @@ async def test_processor_builds_graph_from_final_result():
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
         image_converter=mock_converter,
-        diagram_detector=mock_detector,
+        component_detector=mock_detector,
         connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
         graph_builder=mock_graph_builder,

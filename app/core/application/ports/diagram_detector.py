@@ -4,7 +4,7 @@ from uuid import UUID
 from app.core.domain.entities.diagram_analysis_result import DiagramAnalysisResult
 
 
-class DiagramDetector(Protocol):
+class ComponentDetector(Protocol):
     """Port for diagram component detection operations (driven adapter interface)."""
 
     def detect(self, diagram_upload_id: UUID, image_bytes: bytes) -> DiagramAnalysisResult:

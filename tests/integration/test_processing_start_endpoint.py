@@ -65,7 +65,7 @@ def test_processing_start_endpoint_triggers_processing_pipeline() -> None:
     processor = DiagramUploadProcessor(
         file_storage=storage,
         image_converter=converter,
-        diagram_detector=detector,
+        component_detector=detector,
         connection_detector=connection_detector,
         text_extractor=extractor,
         graph_builder=graph_builder,
