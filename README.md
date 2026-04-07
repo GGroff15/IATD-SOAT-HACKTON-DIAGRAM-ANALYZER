@@ -42,3 +42,4 @@ Response (`202 Accepted`):
 - Legacy SQS listener ingress has been removed.
 - Upstream services must call `POST /processing-start` to trigger diagram processing.
 - `protocol` is used as the processing identifier and must match UUID format expected by current domain model.
+- Text extraction now runs locally through PaddleOCR (default language: English).

@@ -1,6 +1,7 @@
 import boto3
 import structlog
 import uvicorn
+from paddleocr import PaddleOCR
 
 from app.adapter.driver.api.processing_start_endpoint import create_app
 from app.adapter.driven.event_publishers.noop_error_report_publisher import NoOpErrorReportPublisher
@@ -11,9 +12,86 @@ from app.adapter.driven.persistence.s3_file_storage import S3FileStorage
 from app.adapter.driven.conversion.pdf2image_converter import Pdf2ImageConverter
 from app.adapter.driven.detection.yolo_detector import YoloDetector
 from app.adapter.driven.detection.opencv_connection_detector import OpenCVConnectionDetector
-from app.adapter.driven.ocr.textract_ocr import TextractOCR
+from app.adapter.driven.ocr.paddle_ocr import PaddleOCRExtractor
 from app.core.application.services.diagram_upload_processor import DiagramUploadProcessor
 from app.core.application.services.graph_builder_service import GraphBuilderService
+
+
+def _build_paddle_ocr_engine(settings: Settings):
+    """Build PaddleOCR engine with backward-compatible constructor args."""
+    logger = structlog.get_logger()
+
+    normalized_device = settings.PADDLE_OCR_DEVICE.strip().lower()
+    if normalized_device == "gpu":
+        normalized_device = "gpu:0"
+
+    engine_kwargs = {"lang": settings.PADDLE_OCR_LANG}
+
+    if settings.PADDLE_OCR_MODEL_DIR:
+        engine_kwargs["model_dir"] = settings.PADDLE_OCR_MODEL_DIR
+
+    # Keep OCR pipeline minimal for diagram snippets and avoid optional doc modules
+    # that can trigger unstable runtime paths on some CPU backends.
+    lean_pipeline_kwargs = {
+        "use_doc_orientation_classify": False,
+        "use_doc_unwarping": False,
+        "use_textline_orientation": False,
+    }
+
+    runtime_compat_kwargs = {
+        "enable_mkldnn": settings.PADDLE_OCR_ENABLE_MKLDNN,
+    }
+
+    constructor_attempts = [
+        {
+            "device": normalized_device,
+            **lean_pipeline_kwargs,
+            **runtime_compat_kwargs,
+            **engine_kwargs,
+        },
+        {
+            "device": normalized_device,
+            **lean_pipeline_kwargs,
+            **runtime_compat_kwargs,
+            **engine_kwargs,
+        },
+        {
+            "device": normalized_device,
+            **runtime_compat_kwargs,
+            "use_angle_cls": settings.PADDLE_OCR_USE_ANGLE_CLS,
+            **engine_kwargs,
+        },
+        {
+            "device": normalized_device,
+            **runtime_compat_kwargs,
+            **engine_kwargs,
+        },
+        {
+            **runtime_compat_kwargs,
+            "use_angle_cls": settings.PADDLE_OCR_USE_ANGLE_CLS,
+            **engine_kwargs,
+        },
+        {**lean_pipeline_kwargs, **runtime_compat_kwargs, **engine_kwargs},
+        {**lean_pipeline_kwargs, **engine_kwargs},
+        {**runtime_compat_kwargs, **engine_kwargs},
+        {"use_angle_cls": settings.PADDLE_OCR_USE_ANGLE_CLS, **engine_kwargs},
+        engine_kwargs,
+    ]
+
+    last_error: Exception | None = None
+    for kwargs in constructor_attempts:
+        try:
+            return PaddleOCR(**kwargs)
+        except (TypeError, ValueError) as error:
+            last_error = error
+            logger.warning(
+                "paddle.ocr.init.retry",
+                attempted_args=sorted(kwargs.keys()),
+                error=str(error),
+            )
+
+    assert last_error is not None
+    raise last_error
 
 
 def build_application():
@@ -43,7 +121,6 @@ def build_application():
             client_kwargs["aws_secret_access_key"] = "test"
     
     s3_client = boto3.client("s3", **client_kwargs)
-    textract_client = boto3.client("textract", **client_kwargs)
 
     # Create driven adapters (outbound ports)
     file_storage = S3FileStorage(s3_client=s3_client, bucket_name=settings.S3_BUCKET_NAME)
@@ -72,7 +149,11 @@ def build_application():
         arrow_window_size=settings.CONNECTION_ARROW_WINDOW_SIZE,
         max_connections_per_component_pair=settings.CONNECTION_MAX_CONNECTIONS_PER_COMPONENT_PAIR,
     )
-    text_extractor = TextractOCR(textract_client=textract_client)
+    paddle_ocr_engine = _build_paddle_ocr_engine(settings)
+    text_extractor = PaddleOCRExtractor(
+        ocr_engine=paddle_ocr_engine,
+        use_angle_cls=settings.PADDLE_OCR_USE_ANGLE_CLS,
+    )
     graph_builder = GraphBuilderService()
 
     # Create application service with injected dependencies
