@@ -55,7 +55,23 @@ def build_application():
         confidence_threshold=settings.YOLO_CONFIDENCE_THRESHOLD,
         device=settings.YOLO_DEVICE,
     )
-    connection_detector = OpenCVConnectionDetector()
+    connection_detector = OpenCVConnectionDetector(
+        line_threshold=settings.CONNECTION_LINE_THRESHOLD,
+        min_line_length=settings.CONNECTION_MIN_LINE_LENGTH,
+        max_line_gap=settings.CONNECTION_MAX_LINE_GAP,
+        canny_low=settings.CONNECTION_CANNY_LOW,
+        canny_high=settings.CONNECTION_CANNY_HIGH,
+        proximity_threshold=settings.CONNECTION_PROXIMITY_THRESHOLD,
+        border_margin=settings.CONNECTION_BORDER_MARGIN,
+        max_component_overlap_ratio=settings.CONNECTION_MAX_COMPONENT_OVERLAP_RATIO,
+        anchor_distance_threshold=settings.CONNECTION_ANCHOR_DISTANCE_THRESHOLD,
+        dedup_endpoint_tolerance=settings.CONNECTION_DEDUP_ENDPOINT_TOLERANCE,
+        dedup_angle_tolerance=settings.CONNECTION_DEDUP_ANGLE_TOLERANCE,
+        morphology_kernel_size=settings.CONNECTION_MORPHOLOGY_KERNEL_SIZE,
+        min_confidence=settings.CONNECTION_MIN_CONFIDENCE,
+        arrow_window_size=settings.CONNECTION_ARROW_WINDOW_SIZE,
+        max_connections_per_component_pair=settings.CONNECTION_MAX_CONNECTIONS_PER_COMPONENT_PAIR,
+    )
     text_extractor = TextractOCR(textract_client=textract_client)
     graph_builder = GraphBuilderService()
 

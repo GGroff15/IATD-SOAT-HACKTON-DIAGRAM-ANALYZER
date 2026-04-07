@@ -65,6 +65,130 @@ def create_test_image_with_connection(
     return buffer.getvalue()
 
 
+def create_test_image_with_components_and_border_lines(
+    width: int = 640,
+    height: int = 480,
+) -> tuple[bytes, tuple[DetectedComponent, ...]]:
+    """Create an image with component rectangles only (no real inter-component connection)."""
+    img = Image.new("RGB", (width, height), color="white")
+    draw = ImageDraw.Draw(img)
+
+    box1 = (60, 140, 180, 260)
+    box2 = (420, 140, 540, 260)
+
+    draw.rectangle(box1, outline="black", width=3)
+    draw.rectangle(box2, outline="black", width=3)
+
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+
+    components = (
+        DetectedComponent(
+            class_name="box1",
+            confidence=0.9,
+            x=float(box1[0]),
+            y=float(box1[1]),
+            width=float(box1[2] - box1[0]),
+            height=float(box1[3] - box1[1]),
+        ),
+        DetectedComponent(
+            class_name="box2",
+            confidence=0.9,
+            x=float(box2[0]),
+            y=float(box2[1]),
+            width=float(box2[2] - box2[0]),
+            height=float(box2[3] - box2[1]),
+        ),
+    )
+
+    return buffer.getvalue(), components
+
+
+def create_test_image_with_crossing_lines(
+    width: int = 640,
+    height: int = 480,
+) -> tuple[bytes, tuple[DetectedComponent, ...]]:
+    """Create an image with one real connection and one non-anchored crossing artifact."""
+    img = Image.new("RGB", (width, height), color="white")
+    draw = ImageDraw.Draw(img)
+
+    # Two simple components
+    box1 = (80, 170, 170, 260)
+    box2 = (460, 170, 550, 260)
+    draw.rectangle(box1, outline="black", width=2)
+    draw.rectangle(box2, outline="black", width=2)
+
+    # Real connection between components
+    draw.line([(170, 215), (460, 215)], fill="black", width=3)
+
+    # Crossing artifact not anchored to any component endpoint
+    draw.line([(320, 40), (320, 430)], fill="black", width=3)
+
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+
+    components = (
+        DetectedComponent(
+            class_name="box1",
+            confidence=0.9,
+            x=float(box1[0]),
+            y=float(box1[1]),
+            width=float(box1[2] - box1[0]),
+            height=float(box1[3] - box1[1]),
+        ),
+        DetectedComponent(
+            class_name="box2",
+            confidence=0.9,
+            x=float(box2[0]),
+            y=float(box2[1]),
+            width=float(box2[2] - box2[0]),
+            height=float(box2[3] - box2[1]),
+        ),
+    )
+
+    return buffer.getvalue(), components
+
+
+def create_test_image_with_short_arrow(
+    width: int = 640,
+    height: int = 480,
+) -> tuple[bytes, tuple[DetectedComponent, ...]]:
+    """Create an image with a short line and explicit arrowhead shape."""
+    img = Image.new("RGB", (width, height), color="white")
+    draw = ImageDraw.Draw(img)
+
+    start = (220, 240)
+    end = (290, 240)
+    draw.line([start, end], fill="black", width=3)
+
+    # Arrowhead at the end point (short connection, should still be arrow)
+    draw.line([end, (274, 230)], fill="black", width=3)
+    draw.line([end, (274, 250)], fill="black", width=3)
+
+    components = (
+        DetectedComponent(
+            class_name="box1",
+            confidence=0.9,
+            x=180.0,
+            y=210.0,
+            width=40.0,
+            height=60.0,
+        ),
+        DetectedComponent(
+            class_name="box2",
+            confidence=0.9,
+            x=290.0,
+            y=210.0,
+            width=40.0,
+            height=60.0,
+        ),
+    )
+
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+    return buffer.getvalue(), components
+
+
 def create_blank_image(width: int = 640, height: int = 480) -> bytes:
     """Create a blank white test image.
 
@@ -330,3 +454,51 @@ def test_opencv_connection_detector_proximity_threshold():
     )
 
     assert relaxed_linked >= strict_linked
+
+
+def test_opencv_connection_detector_rejects_component_border_lines():
+    """Test that component rectangle borders are not emitted as real connections."""
+    detector = OpenCVConnectionDetector(
+        line_threshold=20,
+        min_line_length=20,
+        max_line_gap=8,
+        proximity_threshold=45.0,
+    )
+    image_bytes, components = create_test_image_with_components_and_border_lines()
+
+    connections = detector.detect(image_bytes, components)
+
+    assert len(connections) == 0
+
+
+def test_opencv_connection_detector_rejects_non_anchored_crossing_artifacts():
+    """Test that crossing lines not anchored to components are filtered out."""
+    detector = OpenCVConnectionDetector(
+        line_threshold=20,
+        min_line_length=25,
+        max_line_gap=12,
+        proximity_threshold=45.0,
+    )
+    image_bytes, components = create_test_image_with_crossing_lines()
+
+    connections = detector.detect(image_bytes, components)
+
+    assert len(connections) == 1
+    connection = connections[0]
+    assert {connection.source_component_index, connection.target_component_index} == {0, 1}
+
+
+def test_opencv_connection_detector_classifies_short_arrow_shape_as_arrow():
+    """Test that an explicit arrowhead can classify short lines as arrows."""
+    detector = OpenCVConnectionDetector(
+        line_threshold=15,
+        min_line_length=15,
+        max_line_gap=6,
+        proximity_threshold=55.0,
+    )
+    image_bytes, components = create_test_image_with_short_arrow()
+
+    connections = detector.detect(image_bytes, components)
+
+    assert len(connections) >= 1
+    assert any(connection.connection_type == ConnectionType.ARROW for connection in connections)

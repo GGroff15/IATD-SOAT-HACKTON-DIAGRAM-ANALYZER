@@ -166,7 +166,7 @@ def test_opencv_connection_detector_detect_multiple_lines(
     mock_cv2.cvtColor.return_value = np.zeros((480, 640), dtype=np.uint8)
     mock_cv2.Canny.return_value = np.zeros((480, 640), dtype=np.uint8)
     mock_cv2.HoughLinesP.return_value = np.array([
-        [[100, 100, 200, 200]],
+        [[150, 100, 300, 300]],
         [[300, 100, 400, 200]],
         [[100, 300, 200, 400]],
     ])
@@ -323,3 +323,147 @@ def test_opencv_connection_detector_empty_components(
     for connection in connections:
         assert connection.source_component_index is None
         assert connection.target_component_index is None
+
+
+def test_opencv_connection_detector_line_overlap_ratio_inside_component(sample_components):
+    """Test overlap ratio is high when a line passes through component interior."""
+    from app.adapter.driven.detection.opencv_connection_detector import (
+        OpenCVConnectionDetector,
+    )
+
+    detector = OpenCVConnectionDetector()
+
+    overlap_ratio = detector._line_component_overlap_ratio(
+        start=(60.0, 60.0),
+        end=(140.0, 140.0),
+        component=sample_components[0],
+    )
+
+    assert overlap_ratio > 0.7
+
+
+def test_opencv_connection_detector_line_overlap_ratio_outside_component(sample_components):
+    """Test overlap ratio is zero when line is outside component bounds."""
+    from app.adapter.driven.detection.opencv_connection_detector import (
+        OpenCVConnectionDetector,
+    )
+
+    detector = OpenCVConnectionDetector()
+
+    overlap_ratio = detector._line_component_overlap_ratio(
+        start=(200.0, 200.0),
+        end=(260.0, 260.0),
+        component=sample_components[0],
+    )
+
+    assert overlap_ratio == 0.0
+
+
+def test_opencv_connection_detector_line_along_component_border_is_rejected(sample_components):
+    """Test that lines running along a component border are classified as border artifacts."""
+    from app.adapter.driven.detection.opencv_connection_detector import (
+        OpenCVConnectionDetector,
+    )
+
+    detector = OpenCVConnectionDetector(border_margin=4.0)
+
+    is_border_line = detector._line_runs_along_component_border(
+        start=(50.0, 50.0),
+        end=(150.0, 50.0),
+        component=sample_components[0],
+    )
+
+    assert is_border_line is True
+
+
+def test_opencv_connection_detector_endpoint_anchor_detection(sample_components):
+    """Test endpoint anchoring near component edge versus far points."""
+    from app.adapter.driven.detection.opencv_connection_detector import (
+        OpenCVConnectionDetector,
+    )
+
+    detector = OpenCVConnectionDetector(anchor_distance_threshold=25.0)
+
+    anchored = detector._is_point_anchored_to_any_component((48.0, 100.0), sample_components)
+    not_anchored = detector._is_point_anchored_to_any_component((260.0, 260.0), sample_components)
+
+    assert anchored is True
+    assert not_anchored is False
+
+
+def test_opencv_connection_detector_deduplicates_similar_lines():
+    """Test that near-duplicate lines are merged into one candidate."""
+    from app.adapter.driven.detection.opencv_connection_detector import (
+        OpenCVConnectionDetector,
+    )
+
+    detector = OpenCVConnectionDetector(dedup_endpoint_tolerance=12.0, dedup_angle_tolerance=8.0)
+
+    lines = [
+        (100.0, 100.0, 200.0, 200.0),
+        (104.0, 104.0, 204.0, 204.0),
+        (100.0, 200.0, 200.0, 200.0),
+    ]
+
+    deduplicated = detector._deduplicate_lines(lines)
+
+    assert len(deduplicated) == 2
+
+
+def test_opencv_connection_detector_deduplicates_component_pair_connections():
+    """Test that only the best connection per component pair is kept by default."""
+    from app.adapter.driven.detection.opencv_connection_detector import (
+        OpenCVConnectionDetector,
+    )
+
+    detector = OpenCVConnectionDetector(max_connections_per_component_pair=1)
+
+    connections = [
+        DetectedConnection(
+            connection_type=ConnectionType.STRAIGHT,
+            confidence=0.62,
+            start_point=(100.0, 100.0),
+            end_point=(200.0, 100.0),
+            source_component_index=0,
+            target_component_index=1,
+        ),
+        DetectedConnection(
+            connection_type=ConnectionType.STRAIGHT,
+            confidence=0.74,
+            start_point=(200.0, 101.0),
+            end_point=(100.0, 101.0),
+            source_component_index=1,
+            target_component_index=0,
+        ),
+        DetectedConnection(
+            connection_type=ConnectionType.ARROW,
+            confidence=0.91,
+            start_point=(101.0, 101.0),
+            end_point=(201.0, 101.0),
+            source_component_index=0,
+            target_component_index=1,
+        ),
+        DetectedConnection(
+            connection_type=ConnectionType.STRAIGHT,
+            confidence=0.70,
+            start_point=(300.0, 300.0),
+            end_point=(340.0, 340.0),
+            source_component_index=2,
+            target_component_index=3,
+        ),
+    ]
+
+    deduplicated = detector._deduplicate_component_pairs(connections)
+
+    assert len(deduplicated) == 2
+    assert sum(
+        1
+        for connection in deduplicated
+        if set((connection.source_component_index, connection.target_component_index)) == {0, 1}
+    ) == 1
+    assert any(
+        connection.source_component_index == 0
+        and connection.target_component_index == 1
+        and connection.confidence == 0.91
+        for connection in deduplicated
+    )
