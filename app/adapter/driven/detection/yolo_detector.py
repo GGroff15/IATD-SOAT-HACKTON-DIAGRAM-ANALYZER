@@ -15,23 +15,32 @@ logger = structlog.get_logger()
 class YoloDetector:
     """Adapter for detecting diagram components using YOLO object detection."""
 
-    def __init__(self, model_name: str = "yolov8n.pt", confidence_threshold: float = 0.5, device: str = "cpu"):
+    def __init__(
+        self,
+        model_name: str = "yolov8n.pt",
+        confidence_threshold: float = 0.5,
+        device: str = "cpu",
+        excluded_class_names: tuple[str, ...] = ("arrow_line", "arrow_head"),
+    ):
         """Initialize the YOLO detector.
 
         Args:
             model_name: YOLO model to use (e.g., 'yolov8n.pt', 'yolov8s.pt')
             confidence_threshold: Minimum confidence score for detections (0.0 to 1.0)
             device: Device to run inference on ('cpu' or 'cuda')
+            excluded_class_names: Class labels excluded from component output
         """
         self.model_name = model_name
         self.confidence_threshold = confidence_threshold
         self.device = device
+        self.excluded_class_names = set(excluded_class_names)
         
         logger.info(
             "yolo_detector.initializing",
             model_name=model_name,
             confidence_threshold=confidence_threshold,
             device=device,
+            excluded_class_names=sorted(self.excluded_class_names),
         )
         
         try:
@@ -78,6 +87,7 @@ class YoloDetector:
             
             # Extract detections from results
             components = []
+            excluded_count = 0
             for result in results:
                 boxes = result.boxes
                 for i in range(len(boxes)):
@@ -85,6 +95,10 @@ class YoloDetector:
                     confidence = float(boxes.conf[i].cpu().numpy())
                     class_id = int(boxes.cls[i].cpu().numpy())
                     class_name = result.names[class_id]
+
+                    if class_name in self.excluded_class_names:
+                        excluded_count += 1
+                        continue
                     
                     # Convert from [x1, y1, x2, y2] to [x, y, width, height]
                     x1, y1, x2, y2 = box
@@ -112,6 +126,7 @@ class YoloDetector:
                 "diagram_detection.completed",
                 diagram_upload_id=str(diagram_upload_id),
                 component_count=len(components),
+                excluded_detection_count=excluded_count,
                 components=[
                     {
                         "class_name": c.class_name,

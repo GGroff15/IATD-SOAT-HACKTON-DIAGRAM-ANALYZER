@@ -11,7 +11,7 @@ from app.infrastructure.config.settings import Settings
 from app.adapter.driven.persistence.s3_file_storage import S3FileStorage
 from app.adapter.driven.conversion.pdf2image_converter import Pdf2ImageConverter
 from app.adapter.driven.detection.yolo_detector import YoloDetector
-from app.adapter.driven.detection.opencv_connection_detector import OpenCVConnectionDetector
+from app.adapter.driven.detection.yolo_connection_detector import YoloConnectionDetector
 from app.adapter.driven.ocr.paddle_ocr import PaddleOCRExtractor
 from app.core.application.services.diagram_upload_processor import DiagramUploadProcessor
 from app.core.application.services.graph_builder_service import GraphBuilderService
@@ -131,23 +131,17 @@ def build_application():
         model_name=settings.YOLO_MODEL_NAME,
         confidence_threshold=settings.YOLO_CONFIDENCE_THRESHOLD,
         device=settings.YOLO_DEVICE,
+        excluded_class_names=(
+            settings.YOLO_CONNECTION_ARROW_LINE_CLASS,
+            settings.YOLO_CONNECTION_ARROW_HEAD_CLASS,
+        ),
     )
-    connection_detector = OpenCVConnectionDetector(
-        line_threshold=settings.CONNECTION_LINE_THRESHOLD,
-        min_line_length=settings.CONNECTION_MIN_LINE_LENGTH,
-        max_line_gap=settings.CONNECTION_MAX_LINE_GAP,
-        canny_low=settings.CONNECTION_CANNY_LOW,
-        canny_high=settings.CONNECTION_CANNY_HIGH,
-        proximity_threshold=settings.CONNECTION_PROXIMITY_THRESHOLD,
-        border_margin=settings.CONNECTION_BORDER_MARGIN,
-        max_component_overlap_ratio=settings.CONNECTION_MAX_COMPONENT_OVERLAP_RATIO,
-        anchor_distance_threshold=settings.CONNECTION_ANCHOR_DISTANCE_THRESHOLD,
-        dedup_endpoint_tolerance=settings.CONNECTION_DEDUP_ENDPOINT_TOLERANCE,
-        dedup_angle_tolerance=settings.CONNECTION_DEDUP_ANGLE_TOLERANCE,
-        morphology_kernel_size=settings.CONNECTION_MORPHOLOGY_KERNEL_SIZE,
-        min_confidence=settings.CONNECTION_MIN_CONFIDENCE,
-        arrow_window_size=settings.CONNECTION_ARROW_WINDOW_SIZE,
-        max_connections_per_component_pair=settings.CONNECTION_MAX_CONNECTIONS_PER_COMPONENT_PAIR,
+    connection_detector = YoloConnectionDetector(
+        model_name=settings.YOLO_MODEL_NAME,
+        confidence_threshold=settings.YOLO_CONFIDENCE_THRESHOLD,
+        device=settings.YOLO_DEVICE,
+        arrow_line_class_name=settings.YOLO_CONNECTION_ARROW_LINE_CLASS,
+        arrow_head_class_name=settings.YOLO_CONNECTION_ARROW_HEAD_CLASS,
     )
     paddle_ocr_engine = _build_paddle_ocr_engine(settings)
     text_extractor = PaddleOCRExtractor(

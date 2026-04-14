@@ -252,3 +252,44 @@ def test_yolo_detector_custom_confidence_threshold(mock_yolo_model, sample_image
     # Assert - verify confidence threshold was passed to YOLO
     call_args = mock_yolo_model.call_args
     assert call_args[1]["conf"] == custom_threshold
+
+
+def test_yolo_detector_excludes_connection_only_classes(mock_yolo_model, sample_image_bytes):
+    """Test that arrow classes are excluded from component detection output."""
+    from app.adapter.driven.detection.yolo_detector import YoloDetector
+
+    diagram_id = uuid4()
+
+    mock_boxes = MagicMock()
+    mock_boxes.xyxy = [
+        _mock_tensor(np.array([40.0, 40.0, 120.0, 120.0])),
+        _mock_tensor(np.array([130.0, 70.0, 300.0, 90.0])),
+        _mock_tensor(np.array([290.0, 60.0, 315.0, 95.0])),
+    ]
+    mock_boxes.conf = [
+        _mock_tensor(np.array(0.96)),
+        _mock_tensor(np.array(0.91)),
+        _mock_tensor(np.array(0.88)),
+    ]
+    mock_boxes.cls = [
+        _mock_tensor(np.array(0)),
+        _mock_tensor(np.array(1)),
+        _mock_tensor(np.array(2)),
+    ]
+    type(mock_boxes).__len__ = lambda _: 3
+
+    mock_result = MagicMock()
+    mock_result.boxes = mock_boxes
+    mock_result.names = {
+        0: "service",
+        1: "arrow_line",
+        2: "arrow_head",
+    }
+    mock_yolo_model.return_value = [mock_result]
+
+    with patch("app.adapter.driven.detection.yolo_detector.YOLO", return_value=mock_yolo_model):
+        detector = YoloDetector(model_name="best.pt")
+        result = detector.detect(diagram_id, sample_image_bytes)
+
+    assert result.component_count == 1
+    assert result.components[0].class_name == "service"

@@ -1,504 +1,168 @@
-"""Integration tests for OpenCV-based connection detection with real image processing."""
+"""Integration tests for YOLO-based connection detection semantics."""
 
 from io import BytesIO
+from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
-from PIL import Image, ImageDraw
+from PIL import Image
 
-from app.adapter.driven.detection.opencv_connection_detector import (
-    OpenCVConnectionDetector,
-)
+from app.adapter.driven.detection.yolo_connection_detector import YoloConnectionDetector
 from app.core.application.exceptions import ConnectionDetectionError
 from app.core.domain.entities.detected_component import DetectedComponent
-from app.core.domain.entities.detected_connection import (
-    ConnectionType,
-    DetectedConnection,
-)
+from app.core.domain.entities.detected_connection import ConnectionType
 
 
-def create_test_image_with_lines(width: int = 640, height: int = 480) -> bytes:
-    """Create a test image with drawn lines for connection detection.
-
-    Args:
-        width: Image width in pixels
-        height: Image height in pixels
-
-    Returns:
-        PNG image bytes
-    """
-    img = Image.new("RGB", (width, height), color="white")
-    draw = ImageDraw.Draw(img)
-
-    # Draw some lines
-    draw.line([(100, 100), (300, 100)], fill="black", width=3)  # Horizontal line
-    draw.line([(100, 200), (100, 400)], fill="black", width=3)  # Vertical line
-    draw.line([(300, 200), (500, 400)], fill="black", width=3)  # Diagonal line
-
-    buffer = BytesIO()
-    img.save(buffer, format="PNG")
-    return buffer.getvalue()
+def _mock_tensor(value):
+    tensor = MagicMock()
+    tensor.cpu.return_value.numpy.return_value = value
+    return tensor
 
 
-def create_test_image_with_connection(
-    start: tuple[int, int],
-    end: tuple[int, int],
-    width: int = 640,
-    height: int = 480,
-) -> bytes:
-    """Create a test image with a single line connecting two points.
+def _mock_result(
+    boxes_xyxy: list[np.ndarray],
+    boxes_conf: list[float],
+    boxes_cls: list[int],
+    names: dict[int, str],
+) -> MagicMock:
+    boxes = MagicMock()
+    boxes.xyxy = [_mock_tensor(value) for value in boxes_xyxy]
+    boxes.conf = [_mock_tensor(np.array(value)) for value in boxes_conf]
+    boxes.cls = [_mock_tensor(np.array(value)) for value in boxes_cls]
+    type(boxes).__len__ = lambda _: len(boxes_xyxy)
 
-    Args:
-        start: Starting point (x, y)
-        end: Ending point (x, y)
-        width: Image width in pixels
-        height: Image height in pixels
-
-    Returns:
-        PNG image bytes
-    """
-    img = Image.new("RGB", (width, height), color="white")
-    draw = ImageDraw.Draw(img)
-    draw.line([start, end], fill="black", width=3)
-
-    buffer = BytesIO()
-    img.save(buffer, format="PNG")
-    return buffer.getvalue()
-
-
-def create_test_image_with_components_and_border_lines(
-    width: int = 640,
-    height: int = 480,
-) -> tuple[bytes, tuple[DetectedComponent, ...]]:
-    """Create an image with component rectangles only (no real inter-component connection)."""
-    img = Image.new("RGB", (width, height), color="white")
-    draw = ImageDraw.Draw(img)
-
-    box1 = (60, 140, 180, 260)
-    box2 = (420, 140, 540, 260)
-
-    draw.rectangle(box1, outline="black", width=3)
-    draw.rectangle(box2, outline="black", width=3)
-
-    buffer = BytesIO()
-    img.save(buffer, format="PNG")
-
-    components = (
-        DetectedComponent(
-            class_name="box1",
-            confidence=0.9,
-            x=float(box1[0]),
-            y=float(box1[1]),
-            width=float(box1[2] - box1[0]),
-            height=float(box1[3] - box1[1]),
-        ),
-        DetectedComponent(
-            class_name="box2",
-            confidence=0.9,
-            x=float(box2[0]),
-            y=float(box2[1]),
-            width=float(box2[2] - box2[0]),
-            height=float(box2[3] - box2[1]),
-        ),
-    )
-
-    return buffer.getvalue(), components
-
-
-def create_test_image_with_crossing_lines(
-    width: int = 640,
-    height: int = 480,
-) -> tuple[bytes, tuple[DetectedComponent, ...]]:
-    """Create an image with one real connection and one non-anchored crossing artifact."""
-    img = Image.new("RGB", (width, height), color="white")
-    draw = ImageDraw.Draw(img)
-
-    # Two simple components
-    box1 = (80, 170, 170, 260)
-    box2 = (460, 170, 550, 260)
-    draw.rectangle(box1, outline="black", width=2)
-    draw.rectangle(box2, outline="black", width=2)
-
-    # Real connection between components
-    draw.line([(170, 215), (460, 215)], fill="black", width=3)
-
-    # Crossing artifact not anchored to any component endpoint
-    draw.line([(320, 40), (320, 430)], fill="black", width=3)
-
-    buffer = BytesIO()
-    img.save(buffer, format="PNG")
-
-    components = (
-        DetectedComponent(
-            class_name="box1",
-            confidence=0.9,
-            x=float(box1[0]),
-            y=float(box1[1]),
-            width=float(box1[2] - box1[0]),
-            height=float(box1[3] - box1[1]),
-        ),
-        DetectedComponent(
-            class_name="box2",
-            confidence=0.9,
-            x=float(box2[0]),
-            y=float(box2[1]),
-            width=float(box2[2] - box2[0]),
-            height=float(box2[3] - box2[1]),
-        ),
-    )
-
-    return buffer.getvalue(), components
-
-
-def create_test_image_with_short_arrow(
-    width: int = 640,
-    height: int = 480,
-) -> tuple[bytes, tuple[DetectedComponent, ...]]:
-    """Create an image with a short line and explicit arrowhead shape."""
-    img = Image.new("RGB", (width, height), color="white")
-    draw = ImageDraw.Draw(img)
-
-    start = (220, 240)
-    end = (290, 240)
-    draw.line([start, end], fill="black", width=3)
-
-    # Arrowhead at the end point (short connection, should still be arrow)
-    draw.line([end, (274, 230)], fill="black", width=3)
-    draw.line([end, (274, 250)], fill="black", width=3)
-
-    components = (
-        DetectedComponent(
-            class_name="box1",
-            confidence=0.9,
-            x=180.0,
-            y=210.0,
-            width=40.0,
-            height=60.0,
-        ),
-        DetectedComponent(
-            class_name="box2",
-            confidence=0.9,
-            x=290.0,
-            y=210.0,
-            width=40.0,
-            height=60.0,
-        ),
-    )
-
-    buffer = BytesIO()
-    img.save(buffer, format="PNG")
-    return buffer.getvalue(), components
+    result = MagicMock()
+    result.boxes = boxes
+    result.names = names
+    return result
 
 
 def create_blank_image(width: int = 640, height: int = 480) -> bytes:
-    """Create a blank white test image.
-
-    Args:
-        width: Image width in pixels
-        height: Image height in pixels
-
-    Returns:
-        PNG image bytes
-    """
-    img = Image.new("RGB", (width, height), color="white")
+    image = Image.new("RGB", (width, height), color="white")
     buffer = BytesIO()
-    img.save(buffer, format="PNG")
+    image.save(buffer, format="PNG")
     return buffer.getvalue()
 
 
-def test_opencv_connection_detector_real_initialization():
-    """Test that OpenCVConnectionDetector initializes with real OpenCV."""
-    detector = OpenCVConnectionDetector(
-        line_threshold=50,
-        min_line_length=30,
-        max_line_gap=10,
-        canny_low=50,
-        canny_high=150,
-        proximity_threshold=20.0,
+def create_components() -> tuple[DetectedComponent, ...]:
+    return (
+        DetectedComponent(
+            class_name="service",
+            confidence=0.95,
+            x=60.0,
+            y=180.0,
+            width=130.0,
+            height=90.0,
+        ),
+        DetectedComponent(
+            class_name="database",
+            confidence=0.93,
+            x=430.0,
+            y=180.0,
+            width=130.0,
+            height=90.0,
+        ),
     )
 
-    assert detector.line_threshold == 50
-    assert detector.min_line_length == 30
 
-
-def test_opencv_connection_detector_detect_blank_image():
-    """Test that blank image returns no connections."""
-    detector = OpenCVConnectionDetector()
+def test_yolo_connection_detector_identifies_arrow_direction_from_head_label():
+    """arrow_head near a component defines the target direction for arrow_line."""
+    components = create_components()
     image_bytes = create_blank_image()
 
-    connections = detector.detect(image_bytes, tuple())
+    mock_model = MagicMock()
+    mock_model.to = MagicMock(return_value=mock_model)
+    mock_model.return_value = [
+        _mock_result(
+            boxes_xyxy=[
+                np.array([190.0, 214.0, 432.0, 236.0]),
+                np.array([428.0, 198.0, 455.0, 242.0]),
+            ],
+            boxes_conf=[0.9, 0.87],
+            boxes_cls=[0, 1],
+            names={0: "arrow_line", 1: "arrow_head"},
+        )
+    ]
 
-    assert isinstance(connections, tuple)
-    assert len(connections) == 0
-
-
-def test_opencv_connection_detector_detect_simple_lines():
-    """Test detection of simple drawn lines in a real image."""
-    detector = OpenCVConnectionDetector(
-        line_threshold=40,
-        min_line_length=50,
-        canny_low=50,
-        canny_high=150,
-    )
-    image_bytes = create_test_image_with_lines()
-
-    connections = detector.detect(image_bytes, tuple())
-
-    # Should detect at least one line
-    assert isinstance(connections, tuple)
-    assert len(connections) > 0
-
-    # Verify connection properties
-    for connection in connections:
-        assert isinstance(connection, DetectedConnection)
-        assert connection.connection_type in [
-            ConnectionType.STRAIGHT,
-            ConnectionType.ARROW,
-            ConnectionType.DASHED,
-            ConnectionType.CURVED,
-        ]
-        assert 0.0 <= connection.confidence <= 1.0
-        assert connection.start_point[0] >= 0
-        assert connection.start_point[1] >= 0
-        assert connection.end_point[0] >= 0
-        assert connection.end_point[1] >= 0
-
-
-def test_opencv_connection_detector_single_connection():
-    """Test detection of a single connection between two points."""
-    detector = OpenCVConnectionDetector(
-        line_threshold=30,
-        min_line_length=100,
-        canny_low=50,
-        canny_high=150,
-    )
-
-    # Create image with single long line
-    image_bytes = create_test_image_with_connection((100, 200), (500, 200))
-
-    connections = detector.detect(image_bytes, tuple())
-
-    # Should detect the line
-    assert len(connections) >= 1
-
-    # Verify first connection properties
-    connection = connections[0]
-    assert connection.confidence > 0.0
-
-    # Line endpoints should be approximately correct
-    # (OpenCV may not detect exact pixels, allow some tolerance)
-    start_x, start_y = connection.start_point
-    end_x, end_y = connection.end_point
-
-    # One endpoint should be near (100, 200) and other near (500, 200)
-    # (order might be reversed)
-    assert (
-        (80 <= start_x <= 120 and 180 <= start_y <= 220)
-        or (480 <= start_x <= 520 and 180 <= start_y <= 220)
-    )
-
-
-def test_opencv_connection_detector_with_components():
-    """Test connection detection with components present."""
-    detector = OpenCVConnectionDetector(
-        line_threshold=30,
-        min_line_length=50,
-        proximity_threshold=50.0,
-    )
-
-    # Create components at specific locations
-    components = (
-        DetectedComponent(
-            class_name="box1",
-            confidence=0.9,
-            x=50.0,
-            y=150.0,
-            width=80.0,
-            height=80.0,
-        ),
-        DetectedComponent(
-            class_name="box2",
-            confidence=0.9,
-            x=450.0,
-            y=150.0,
-            width=80.0,
-            height=80.0,
-        ),
-    )
-
-    # Create line connecting the two components (roughly)
-    # Line from center of box1 to center of box2
-    image_bytes = create_test_image_with_connection((130, 190), (490, 190))
-
-    connections = detector.detect(image_bytes, components)
-
-    # Should detect connection(s)
-    assert len(connections) >= 1
-
-    # May or may not link depending on proximity - test that indices are valid if present
-    for connection in connections:
-        if connection.source_component_index is not None:
-            assert 0 <= connection.source_component_index < len(components)
-        if connection.target_component_index is not None:
-            assert 0 <= connection.target_component_index < len(components)
-
-
-def test_opencv_connection_detector_different_thresholds():
-    """Test that different confidence thresholds affect detection results."""
-    image_bytes = create_test_image_with_lines()
-
-    # Low threshold - should detect more lines
-    detector_low = OpenCVConnectionDetector(
-        line_threshold=20,
-        min_line_length=30,
-    )
-    connections_low = detector_low.detect(image_bytes, tuple())
-
-    # High threshold - should detect fewer lines
-    detector_high = OpenCVConnectionDetector(
-        line_threshold=100,
-        min_line_length=100,
-    )
-    connections_high = detector_high.detect(image_bytes, tuple())
-
-    # Lower threshold should detect at least as many connections
-    assert len(connections_low) >= len(connections_high)
-
-
-def test_opencv_connection_detector_invalid_image_bytes():
-    """Test that invalid image bytes raise ConnectionDetectionError."""
-    detector = OpenCVConnectionDetector()
-
-    with pytest.raises(ConnectionDetectionError, match="Failed to decode image"):
-        detector.detect(b"not_valid_image_data", tuple())
-
-
-def test_opencv_connection_detector_empty_image_bytes():
-    """Test that empty image bytes raise ConnectionDetectionError."""
-    detector = OpenCVConnectionDetector()
-
-    with pytest.raises(ConnectionDetectionError):
-        detector.detect(b"", tuple())
-
-
-def test_opencv_connection_detector_corrupted_png():
-    """Test that corrupted PNG data raises ConnectionDetectionError."""
-    detector = OpenCVConnectionDetector()
-
-    # Create invalid PNG header
-    corrupted_png = b"\x89PNG\r\n\x1a\n" + b"corrupted_data"
-
-    with pytest.raises(ConnectionDetectionError):
-        detector.detect(corrupted_png, tuple())
-
-
-def test_opencv_connection_detector_with_empty_components():
-    """Test that detection works with empty components tuple."""
-    detector = OpenCVConnectionDetector()
-    image_bytes = create_test_image_with_lines()
-
-    connections = detector.detect(image_bytes, tuple())
-
-    # Should still detect connections
-    assert isinstance(connections, tuple)
-
-    # All connections should have None component indices
-    for connection in connections:
-        assert connection.source_component_index is None
-        assert connection.target_component_index is None
-
-
-def test_opencv_connection_detector_proximity_threshold():
-    """Test that proximity threshold affects component linking."""
-    components = (
-        DetectedComponent(
-            class_name="box1",
-            confidence=0.9,
-            x=50.0,
-            y=150.0,
-            width=80.0,
-            height=80.0,
-        ),
-    )
-
-    # Line far from component
-    image_bytes = create_test_image_with_connection((400, 400), (500, 450))
-
-    # Very strict proximity threshold
-    detector_strict = OpenCVConnectionDetector(
-        line_threshold=30,
-        min_line_length=50,
-        proximity_threshold=10.0,
-    )
-    connections_strict = detector_strict.detect(image_bytes, components)
-
-    # Relaxed proximity threshold
-    detector_relaxed = OpenCVConnectionDetector(
-        line_threshold=30,
-        min_line_length=50,
-        proximity_threshold=500.0,
-    )
-    connections_relaxed = detector_relaxed.detect(image_bytes, components)
-
-    # Both should detect connections
-    assert len(connections_strict) > 0
-    assert len(connections_relaxed) > 0
-
-    # Strict should have fewer linked connections
-    strict_linked = sum(
-        1 for c in connections_strict
-        if c.source_component_index is not None or c.target_component_index is not None
-    )
-    relaxed_linked = sum(
-        1 for c in connections_relaxed
-        if c.source_component_index is not None or c.target_component_index is not None
-    )
-
-    assert relaxed_linked >= strict_linked
-
-
-def test_opencv_connection_detector_rejects_component_border_lines():
-    """Test that component rectangle borders are not emitted as real connections."""
-    detector = OpenCVConnectionDetector(
-        line_threshold=20,
-        min_line_length=20,
-        max_line_gap=8,
-        proximity_threshold=45.0,
-    )
-    image_bytes, components = create_test_image_with_components_and_border_lines()
-
-    connections = detector.detect(image_bytes, components)
-
-    assert len(connections) == 0
-
-
-def test_opencv_connection_detector_rejects_non_anchored_crossing_artifacts():
-    """Test that crossing lines not anchored to components are filtered out."""
-    detector = OpenCVConnectionDetector(
-        line_threshold=20,
-        min_line_length=25,
-        max_line_gap=12,
-        proximity_threshold=45.0,
-    )
-    image_bytes, components = create_test_image_with_crossing_lines()
-
-    connections = detector.detect(image_bytes, components)
+    with patch(
+        "app.adapter.driven.detection.yolo_connection_detector.YOLO",
+        return_value=mock_model,
+    ):
+        detector = YoloConnectionDetector(model_name="best.pt")
+        connections = detector.detect(image_bytes=image_bytes, components=components)
 
     assert len(connections) == 1
     connection = connections[0]
+    assert connection.connection_type == ConnectionType.ARROW
+    assert connection.source_component_index == 0
+    assert connection.target_component_index == 1
+
+
+def test_yolo_connection_detector_uses_straight_when_head_is_missing():
+    """arrow_line without arrow_head remains a straight connection."""
+    components = create_components()
+    image_bytes = create_blank_image()
+
+    mock_model = MagicMock()
+    mock_model.to = MagicMock(return_value=mock_model)
+    mock_model.return_value = [
+        _mock_result(
+            boxes_xyxy=[np.array([190.0, 214.0, 432.0, 236.0])],
+            boxes_conf=[0.82],
+            boxes_cls=[0],
+            names={0: "arrow_line"},
+        )
+    ]
+
+    with patch(
+        "app.adapter.driven.detection.yolo_connection_detector.YOLO",
+        return_value=mock_model,
+    ):
+        detector = YoloConnectionDetector(model_name="best.pt")
+        connections = detector.detect(image_bytes=image_bytes, components=components)
+
+    assert len(connections) == 1
+    connection = connections[0]
+    assert connection.connection_type == ConnectionType.STRAIGHT
     assert {connection.source_component_index, connection.target_component_index} == {0, 1}
 
 
-def test_opencv_connection_detector_classifies_short_arrow_shape_as_arrow():
-    """Test that an explicit arrowhead can classify short lines as arrows."""
-    detector = OpenCVConnectionDetector(
-        line_threshold=15,
-        min_line_length=15,
-        max_line_gap=6,
-        proximity_threshold=55.0,
-    )
-    image_bytes, components = create_test_image_with_short_arrow()
+def test_yolo_connection_detector_returns_empty_when_no_arrow_line_detected():
+    """No arrow_line class should produce no detected connections."""
+    components = create_components()
+    image_bytes = create_blank_image()
 
-    connections = detector.detect(image_bytes, components)
+    mock_model = MagicMock()
+    mock_model.to = MagicMock(return_value=mock_model)
+    mock_model.return_value = [
+        _mock_result(
+            boxes_xyxy=[np.array([428.0, 198.0, 455.0, 242.0])],
+            boxes_conf=[0.87],
+            boxes_cls=[1],
+            names={1: "arrow_head"},
+        )
+    ]
 
-    assert len(connections) >= 1
-    assert any(connection.connection_type == ConnectionType.ARROW for connection in connections)
+    with patch(
+        "app.adapter.driven.detection.yolo_connection_detector.YOLO",
+        return_value=mock_model,
+    ):
+        detector = YoloConnectionDetector(model_name="best.pt")
+        connections = detector.detect(image_bytes=image_bytes, components=components)
+
+    assert connections == tuple()
+
+
+def test_yolo_connection_detector_raises_error_for_corrupted_image_bytes():
+    """Corrupted image bytes must raise ConnectionDetectionError."""
+    mock_model = MagicMock()
+    mock_model.to = MagicMock(return_value=mock_model)
+
+    with patch(
+        "app.adapter.driven.detection.yolo_connection_detector.YOLO",
+        return_value=mock_model,
+    ):
+        detector = YoloConnectionDetector(model_name="best.pt")
+
+    with pytest.raises(ConnectionDetectionError, match="Failed to detect connections"):
+        detector.detect(image_bytes=b"not-a-valid-image", components=tuple())

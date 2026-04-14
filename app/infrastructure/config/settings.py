@@ -13,9 +13,11 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
     
     # YOLO Detection Settings
-    YOLO_MODEL_NAME: str = "yolov8n.pt"
+    YOLO_MODEL_NAME: str = "best.pt"
     YOLO_CONFIDENCE_THRESHOLD: float = 0.5
     YOLO_DEVICE: str = "cpu"
+    YOLO_CONNECTION_ARROW_LINE_CLASS: str = "arrow_line"
+    YOLO_CONNECTION_ARROW_HEAD_CLASS: str = "arrow_head"
 
     # PaddleOCR Settings
     PADDLE_OCR_LANG: str = "en"
