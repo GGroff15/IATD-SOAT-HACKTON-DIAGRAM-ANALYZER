@@ -13,6 +13,9 @@ from app.adapter.driven.conversion.pdf2image_converter import Pdf2ImageConverter
 from app.adapter.driven.detection.yolo_detector import YoloDetector
 from app.adapter.driven.detection.yolo_connection_detector import YoloConnectionDetector
 from app.adapter.driven.ocr.paddle_ocr import PaddleOCRExtractor
+from app.core.application.services.architectural_rules_validator_service import (
+    ArchitecturalRulesValidatorService,
+)
 from app.core.application.services.diagram_upload_processor import DiagramUploadProcessor
 from app.core.application.services.graph_builder_service import GraphBuilderService
 
@@ -149,6 +152,7 @@ def build_application():
         use_angle_cls=settings.PADDLE_OCR_USE_ANGLE_CLS,
     )
     graph_builder = GraphBuilderService()
+    architectural_rules_validator = ArchitecturalRulesValidatorService()
 
     # Create application service with injected dependencies
     processor = DiagramUploadProcessor(
@@ -158,6 +162,7 @@ def build_application():
         connection_detector=connection_detector,
         text_extractor=text_extractor,
         graph_builder=graph_builder,
+        architectural_rules_validator=architectural_rules_validator,
         graph_result_publisher=graph_result_publisher,
     )
 

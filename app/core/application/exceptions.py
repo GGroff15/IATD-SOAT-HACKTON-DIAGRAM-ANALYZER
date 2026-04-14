@@ -36,3 +36,7 @@ class ConnectionDetectionError(DiagramAnalyzerException):
 
 class TextExtractionError(DiagramAnalyzerException):
     """Raised when text extraction from image fails."""
+
+
+class ArchitecturalValidationExecutionError(DiagramAnalyzerException):
+    """Raised when architectural validation fails due to a technical/runtime error."""

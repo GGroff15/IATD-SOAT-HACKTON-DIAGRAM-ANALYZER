@@ -8,10 +8,15 @@ from app.core.domain.entities.detected_component import DetectedComponent
 from app.core.domain.entities.detected_connection import ConnectionType, DetectedConnection
 from app.core.application.services.diagram_upload_processor import DiagramUploadProcessor
 from app.core.application.exceptions import (
+    ArchitecturalValidationExecutionError,
     ImageConversionError,
     DiagramDetectionError,
     TextExtractionError,
     ConnectionDetectionError,
+)
+from app.core.domain.entities.architectural_validation import (
+    ArchitecturalRuleViolation,
+    ArchitecturalValidationResult,
 )
 
 
@@ -52,6 +57,7 @@ class MockGraphBuilder:
     """Mock graph builder for testing"""
     def __init__(self):
         graph = Mock()
+        graph.diagram_upload_id = uuid4()
         graph.node_count = 0
         graph.edge_count = 0
         self.build = Mock(return_value=graph)
@@ -61,6 +67,19 @@ class MockGraphResultPublisher:
     """Mock graph result publisher for testing"""
     def __init__(self):
         self.publish_graph = AsyncMock()
+
+
+class MockArchitecturalRulesValidator:
+    """Mock architectural rules validator for testing"""
+
+    def __init__(self):
+        self.validate = Mock(
+            return_value=ArchitecturalValidationResult(
+                diagram_upload_id=uuid4(),
+                is_valid=True,
+                violations=tuple(),
+            )
+        )
 
 
 @pytest.mark.asyncio
@@ -626,6 +645,12 @@ async def test_processor_builds_graph_from_final_result():
     mock_extractor = MockTextExtractor()
     mock_graph_builder = MockGraphBuilder()
     mock_graph_result_publisher = MockGraphResultPublisher()
+    mock_architectural_rules_validator = MockArchitecturalRulesValidator()
+    mock_architectural_rules_validator.validate.return_value = ArchitecturalValidationResult(
+        diagram_upload_id=upload.diagram_upload_id,
+        is_valid=True,
+        violations=tuple(),
+    )
 
     processor = DiagramUploadProcessor(
         file_storage=mock_storage,
@@ -634,6 +659,7 @@ async def test_processor_builds_graph_from_final_result():
         connection_detector=mock_connection_detector,
         text_extractor=mock_extractor,
         graph_builder=mock_graph_builder,
+        architectural_rules_validator=mock_architectural_rules_validator,
         graph_result_publisher=mock_graph_result_publisher,
     )
 
@@ -646,7 +672,82 @@ async def test_processor_builds_graph_from_final_result():
     assert build_arg.diagram_upload_id == upload.diagram_upload_id
     assert build_arg.component_count == 1
     assert build_arg.connection_count == 1
-    mock_graph_result_publisher.publish_graph.assert_awaited_once_with(
+    mock_architectural_rules_validator.validate.assert_called_once_with(
         mock_graph_builder.build.return_value
     )
+    mock_graph_result_publisher.publish_graph.assert_awaited_once_with(
+        mock_graph_builder.build.return_value,
+        mock_architectural_rules_validator.validate.return_value,
+    )
+
+
+@pytest.mark.asyncio
+async def test_processor_continues_publishing_when_architectural_violations_exist():
+    """Test that rule violations do not stop graph publishing."""
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf")
+    mock_storage = MockFileStorage()
+    mock_converter = MockImageConverter()
+    mock_detector = MockDiagramDetector()
+    mock_connection_detector = MockConnectionDetector()
+    mock_extractor = MockTextExtractor()
+    mock_graph_builder = MockGraphBuilder()
+    mock_graph_result_publisher = MockGraphResultPublisher()
+    mock_architectural_rules_validator = MockArchitecturalRulesValidator()
+
+    mock_architectural_rules_validator.validate.return_value = ArchitecturalValidationResult(
+        diagram_upload_id=upload.diagram_upload_id,
+        is_valid=False,
+        violations=(
+            ArchitecturalRuleViolation(
+                code="ORPHAN_CONNECTION",
+                message="Connection must reference both source and target components",
+                edge_id=0,
+            ),
+        ),
+    )
+
+    processor = DiagramUploadProcessor(
+        file_storage=mock_storage,
+        image_converter=mock_converter,
+        component_detector=mock_detector,
+        connection_detector=mock_connection_detector,
+        text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
+        architectural_rules_validator=mock_architectural_rules_validator,
+        graph_result_publisher=mock_graph_result_publisher,
+    )
+
+    await processor.process(upload)
+
+    mock_graph_result_publisher.publish_graph.assert_awaited_once_with(
+        mock_graph_builder.build.return_value,
+        mock_architectural_rules_validator.validate.return_value,
+    )
+
+
+@pytest.mark.asyncio
+async def test_processor_raises_technical_validation_error_when_validator_crashes():
+    """Test that unexpected validator errors are wrapped as technical failures."""
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf")
+    mock_storage = MockFileStorage()
+    mock_converter = MockImageConverter()
+    mock_detector = MockDiagramDetector()
+    mock_connection_detector = MockConnectionDetector()
+    mock_extractor = MockTextExtractor()
+    mock_graph_builder = MockGraphBuilder()
+    mock_architectural_rules_validator = MockArchitecturalRulesValidator()
+    mock_architectural_rules_validator.validate.side_effect = RuntimeError("validator crashed")
+
+    processor = DiagramUploadProcessor(
+        file_storage=mock_storage,
+        image_converter=mock_converter,
+        component_detector=mock_detector,
+        connection_detector=mock_connection_detector,
+        text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
+        architectural_rules_validator=mock_architectural_rules_validator,
+    )
+
+    with pytest.raises(ArchitecturalValidationExecutionError, match="validator crashed"):
+        await processor.process(upload)
 

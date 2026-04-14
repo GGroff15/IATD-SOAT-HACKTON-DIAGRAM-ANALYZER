@@ -2,12 +2,16 @@ import structlog
 
 from app.core.application.exceptions import FileStorageError
 from app.core.application.exceptions import (
+    ArchitecturalValidationExecutionError,
     TextExtractionError,
     ConnectionDetectionError,
 )
+from app.core.domain.entities.architectural_validation import ArchitecturalValidationResult
 from app.core.domain.entities.diagram_upload import DiagramUpload
 from app.core.domain.entities.detected_component import DetectedComponent
 from app.core.domain.entities.diagram_analysis_result import DiagramAnalysisResult
+from app.core.domain.entities.graph import Graph
+from app.core.application.ports.architectural_rules_validator import ArchitecturalRulesValidator
 from app.core.application.ports.file_storage import FileStorage
 from app.core.application.ports.image_converter import ImageConverter
 from app.core.application.ports.diagram_detector import ComponentDetector
@@ -30,6 +34,7 @@ class DiagramUploadProcessor:
         connection_detector: ConnectionDetector,
         text_extractor: TextExtractor,
         graph_builder: GraphBuilder,
+        architectural_rules_validator: ArchitecturalRulesValidator | None = None,
         graph_result_publisher: GraphResultPublisher | None = None,
     ):
         """Initialize the processor with injected dependencies.
@@ -41,6 +46,7 @@ class DiagramUploadProcessor:
             connection_detector: Connection detector adapter for identifying connections
             text_extractor: Text extractor adapter for extracting text via OCR
             graph_builder: Graph builder service for constructing graph output
+            architectural_rules_validator: Optional architectural rules validator
             graph_result_publisher: Optional output adapter for graph publishing/persistence
         """
         self.file_storage = file_storage
@@ -49,6 +55,7 @@ class DiagramUploadProcessor:
         self.connection_detector = connection_detector
         self.text_extractor = text_extractor
         self.graph_builder = graph_builder
+        self.architectural_rules_validator = architectural_rules_validator
         self.graph_result_publisher = graph_result_publisher
 
     async def process(self, upload: DiagramUpload) -> None:
@@ -168,9 +175,10 @@ class DiagramUploadProcessor:
         )
 
         graph = self.graph_builder.build(final_result)
+        validation_result = self._validate_architectural_rules(graph)
 
         if self.graph_result_publisher is not None:
-            await self.graph_result_publisher.publish_graph(graph)
+            await self.graph_result_publisher.publish_graph(graph, validation_result)
         
         logger.info(
             "diagram_upload.process.completed",
@@ -180,4 +188,27 @@ class DiagramUploadProcessor:
             components_with_text=sum(1 for c in enriched_components if c.extracted_text),
             graph_node_count=graph.node_count,
             graph_edge_count=graph.edge_count,
+            architectural_is_valid=validation_result.is_valid,
+            architectural_violation_count=len(validation_result.violations),
         )
+
+    def _validate_architectural_rules(self, graph: Graph) -> ArchitecturalValidationResult:
+        if self.architectural_rules_validator is None:
+            return ArchitecturalValidationResult(
+                diagram_upload_id=graph.diagram_upload_id,
+                is_valid=True,
+                violations=tuple(),
+            )
+
+        try:
+            validation_result = self.architectural_rules_validator.validate(graph)
+        except Exception as error:  # pragma: no cover - exercised via unit test
+            raise ArchitecturalValidationExecutionError(str(error)) from error
+
+        logger.info(
+            "diagram_upload.process.architectural_validation_completed",
+            diagram_upload_id=str(graph.diagram_upload_id),
+            is_valid=validation_result.is_valid,
+            violation_count=len(validation_result.violations),
+        )
+        return validation_result

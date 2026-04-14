@@ -2,6 +2,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 
 from app.core.application.exceptions import (
+    ArchitecturalValidationExecutionError,
     ConnectionDetectionError,
     DiagramDetectionError,
     FileNotFoundError,
@@ -96,6 +97,12 @@ KNOWN_EXCEPTION_MAPPINGS: dict[type[Exception], ProblemMapping] = {
         title="Text Extraction Error",
         classification="text-extraction-error",
         detail="Unable to extract text from the diagram.",
+    ),
+    ArchitecturalValidationExecutionError: ProblemMapping(
+        status=500,
+        title="Architectural Validation Error",
+        classification="architectural-validation-error",
+        detail="Unable to validate architectural rules for the generated graph.",
     ),
 }
 
