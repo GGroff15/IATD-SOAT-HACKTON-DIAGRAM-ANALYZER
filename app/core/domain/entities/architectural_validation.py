@@ -1,5 +1,13 @@
 from dataclasses import dataclass, field
+from enum import Enum
 from uuid import UUID
+
+
+class ViolationSeverity(Enum):
+    """Severity levels for architectural findings."""
+
+    ERROR = "error"
+    WARNING = "warning"
 
 
 @dataclass(frozen=True)
@@ -10,6 +18,7 @@ class ArchitecturalRuleViolation:
     message: str
     node_id: int | None = None
     edge_id: int | None = None
+    severity: ViolationSeverity = ViolationSeverity.ERROR
 
     def __post_init__(self) -> None:
         if not self.code or not isinstance(self.code, str):
@@ -20,6 +29,8 @@ class ArchitecturalRuleViolation:
             raise ValueError("node_id must be non-negative or None")
         if self.edge_id is not None and self.edge_id < 0:
             raise ValueError("edge_id must be non-negative or None")
+        if not isinstance(self.severity, ViolationSeverity):
+            raise TypeError("severity must be a ViolationSeverity")
 
 
 @dataclass(frozen=True)
@@ -29,6 +40,24 @@ class ArchitecturalValidationResult:
     diagram_upload_id: UUID
     is_valid: bool
     violations: tuple[ArchitecturalRuleViolation, ...] = field(default_factory=tuple)
+
+    @property
+    def error_violations(self) -> tuple[ArchitecturalRuleViolation, ...]:
+        """Return only error-level violations."""
+        return tuple(
+            violation
+            for violation in self.violations
+            if violation.severity == ViolationSeverity.ERROR
+        )
+
+    @property
+    def warning_violations(self) -> tuple[ArchitecturalRuleViolation, ...]:
+        """Return only warning-level findings."""
+        return tuple(
+            violation
+            for violation in self.violations
+            if violation.severity == ViolationSeverity.WARNING
+        )
 
     def __post_init__(self) -> None:
         if not isinstance(self.diagram_upload_id, UUID):
@@ -40,7 +69,12 @@ class ArchitecturalValidationResult:
         for violation in self.violations:
             if not isinstance(violation, ArchitecturalRuleViolation):
                 raise TypeError("all violations must be ArchitecturalRuleViolation instances")
-        if self.is_valid and self.violations:
-            raise ValueError("is_valid cannot be True when violations are present")
-        if not self.is_valid and not self.violations:
-            raise ValueError("is_valid cannot be False when no violations are present")
+
+        has_error_violations = any(
+            violation.severity == ViolationSeverity.ERROR
+            for violation in self.violations
+        )
+        if self.is_valid and has_error_violations:
+            raise ValueError("is_valid cannot be True when error violations are present")
+        if not self.is_valid and not has_error_violations:
+            raise ValueError("is_valid cannot be False when no error violations are present")
