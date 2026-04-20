@@ -11,6 +11,29 @@ Python microservice for diagram analysis using hexagonal architecture.
 
 The service starts a FastAPI application and exposes the processing trigger endpoint.
 
+## External YOLO inference dependency
+
+Diagram detection now uses an external YOLO inference API instead of an embedded model runtime.
+
+Required environment configuration:
+
+- `YOLO_INFERENCE_BASE_URL` (default: `http://127.0.0.1:8000`)
+- `YOLO_INFERENCE_INFER_PATH` (default: `/infer`)
+- `YOLO_INFERENCE_TIMEOUT_SECONDS` (default: `10.0`)
+
+The analyzer sends each converted image to the configured `POST /infer` endpoint as multipart form data (`file` field) and expects:
+
+```json
+{
+  "detections": [
+    {
+      "label": "service",
+      "bbox": { "x1": 10, "y1": 20, "x2": 110, "y2": 120 }
+    }
+  ]
+}
+```
+
 ## Processing Start Endpoint
 
 - Method: `POST`

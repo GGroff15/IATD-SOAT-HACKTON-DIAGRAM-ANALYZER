@@ -1,11 +1,13 @@
 from dataclasses import dataclass
-from io import BytesIO
 from math import hypot
 
 import structlog
-from PIL import Image
-from ultralytics import YOLO
 
+from app.adapter.driven.detection.yolo_inference_client import (
+    InferenceDetection,
+    YoloInferenceClient,
+    YoloInferenceClientError,
+)
 from app.core.application.exceptions import ConnectionDetectionError
 from app.core.domain.entities.detected_component import DetectedComponent
 from app.core.domain.entities.detected_connection import ConnectionType, DetectedConnection
@@ -28,45 +30,24 @@ class _Detection:
 
 
 class YoloConnectionDetector:
-    """Adapter for detecting directed connections with YOLO classes."""
+    """Adapter for detecting directed connections from remote YOLO detections."""
 
     def __init__(
         self,
-        model_name: str = "best.pt",
-        confidence_threshold: float = 0.5,
-        device: str = "cpu",
+        inference_client: YoloInferenceClient,
         arrow_line_class_name: str = "arrow_line",
         arrow_head_class_name: str = "arrow_head",
     ):
-        self.model_name = model_name
-        self.confidence_threshold = confidence_threshold
-        self.device = device
+        self.inference_client = inference_client
         self.arrow_line_class_name = arrow_line_class_name
         self.arrow_head_class_name = arrow_head_class_name
 
         logger.info(
             "yolo_connection_detector.initializing",
-            model_name=model_name,
-            confidence_threshold=confidence_threshold,
-            device=device,
             arrow_line_class_name=arrow_line_class_name,
             arrow_head_class_name=arrow_head_class_name,
         )
-
-        try:
-            self.model = YOLO(model_name)
-            self.model.to(device)
-            logger.info("yolo_connection_detector.initialized", model_name=model_name)
-        except Exception as exc:
-            logger.error(
-                "yolo_connection_detector.initialization_failed",
-                model_name=model_name,
-                error=str(exc),
-                exc_info=True,
-            )
-            raise ConnectionDetectionError(
-                f"Failed to initialize YOLO connection model '{model_name}': {exc}"
-            ) from exc
+        logger.info("yolo_connection_detector.initialized")
 
     def detect(
         self,
@@ -81,10 +62,7 @@ class YoloConnectionDetector:
         )
 
         try:
-            image = Image.open(BytesIO(image_bytes))
-            results = self.model(image, conf=self.confidence_threshold, verbose=False)
-
-            detections = self._extract_detections(results)
+            detections = self._extract_detections(self.inference_client.infer(image_bytes))
             line_detections = [
                 detection
                 for detection in detections
@@ -173,8 +151,8 @@ class YoloConnectionDetector:
                 connection_count=len(connections),
             )
             return tuple(connections)
-        except ConnectionDetectionError:
-            raise
+        except YoloInferenceClientError as exc:
+            raise ConnectionDetectionError(f"Failed to detect connections: {exc}") from exc
         except Exception as exc:
             logger.error(
                 "connection_detection.failed",
@@ -183,28 +161,19 @@ class YoloConnectionDetector:
             )
             raise ConnectionDetectionError(f"Failed to detect connections: {exc}") from exc
 
-    def _extract_detections(self, results: list) -> list[_Detection]:
-        detections: list[_Detection] = []
-        for result in results:
-            boxes = result.boxes
-            for index in range(len(boxes)):
-                box = boxes.xyxy[index].cpu().numpy()
-                confidence = float(boxes.conf[index].cpu().numpy())
-                class_id = int(boxes.cls[index].cpu().numpy())
-                class_name = result.names[class_id]
-
-                x1, y1, x2, y2 = box
-                detections.append(
-                    _Detection(
-                        class_name=str(class_name),
-                        confidence=confidence,
-                        x1=float(x1),
-                        y1=float(y1),
-                        x2=float(x2),
-                        y2=float(y2),
-                    )
-                )
-        return detections
+    @staticmethod
+    def _extract_detections(raw_detections: tuple[InferenceDetection, ...]) -> list[_Detection]:
+        return [
+            _Detection(
+                class_name=detection.label,
+                confidence=detection.confidence,
+                x1=detection.x1,
+                y1=detection.y1,
+                x2=detection.x2,
+                y2=detection.y2,
+            )
+            for detection in raw_detections
+        ]
 
     def _find_nearest_detection(
         self,

@@ -12,6 +12,7 @@ from app.adapter.driven.persistence.s3_file_storage import S3FileStorage
 from app.adapter.driven.conversion.pdf2image_converter import Pdf2ImageConverter
 from app.adapter.driven.detection.yolo_detector import YoloDetector
 from app.adapter.driven.detection.yolo_connection_detector import YoloConnectionDetector
+from app.adapter.driven.detection.yolo_inference_client import YoloInferenceClient
 from app.adapter.driven.ocr.paddle_ocr import PaddleOCRExtractor
 from app.core.application.services.architectural_rules_validator_service import (
     ArchitecturalRulesValidatorService,
@@ -130,19 +131,20 @@ def build_application():
     error_report_publisher = NoOpErrorReportPublisher()
     graph_result_publisher = NoOpGraphResultPublisher()
     image_converter = Pdf2ImageConverter()
+    inference_client = YoloInferenceClient(
+        base_url=settings.YOLO_INFERENCE_BASE_URL,
+        infer_path=settings.YOLO_INFERENCE_INFER_PATH,
+        timeout_seconds=settings.YOLO_INFERENCE_TIMEOUT_SECONDS,
+    )
     component_detector = YoloDetector(
-        model_name=settings.YOLO_MODEL_NAME,
-        confidence_threshold=settings.YOLO_CONFIDENCE_THRESHOLD,
-        device=settings.YOLO_DEVICE,
+        inference_client=inference_client,
         excluded_class_names=(
             settings.YOLO_CONNECTION_ARROW_LINE_CLASS,
             settings.YOLO_CONNECTION_ARROW_HEAD_CLASS,
         ),
     )
     connection_detector = YoloConnectionDetector(
-        model_name=settings.YOLO_MODEL_NAME,
-        confidence_threshold=settings.YOLO_CONFIDENCE_THRESHOLD,
-        device=settings.YOLO_DEVICE,
+        inference_client=inference_client,
         arrow_line_class_name=settings.YOLO_CONNECTION_ARROW_LINE_CLASS,
         arrow_head_class_name=settings.YOLO_CONNECTION_ARROW_HEAD_CLASS,
     )

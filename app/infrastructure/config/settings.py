@@ -12,10 +12,10 @@ class Settings(BaseSettings):
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
     
-    # YOLO Detection Settings
-    YOLO_MODEL_NAME: str = "best.pt"
-    YOLO_CONFIDENCE_THRESHOLD: float = 0.5
-    YOLO_DEVICE: str = "cpu"
+    # YOLO Inference API Settings
+    YOLO_INFERENCE_BASE_URL: str = "http://127.0.0.1:8000"
+    YOLO_INFERENCE_INFER_PATH: str = "/infer"
+    YOLO_INFERENCE_TIMEOUT_SECONDS: float = 10.0
     YOLO_CONNECTION_ARROW_LINE_CLASS: str = "arrow_line"
     YOLO_CONNECTION_ARROW_HEAD_CLASS: str = "arrow_head"
 
