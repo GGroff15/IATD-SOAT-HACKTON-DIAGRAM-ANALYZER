@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 
 from app.adapter.driven.llm.openai_compatible_architecture_llm_analyzer import (
-    MistralArchitectureAnalyzer,
+    ArchitectureLlmAnalyzerImpl,
 )
 from app.core.application.exceptions import LlmInferenceError
 from app.core.domain.entities.architectural_validation import ArchitecturalValidationResult
@@ -35,7 +35,7 @@ def _build_graph() -> Graph:
 
 @pytest.mark.asyncio
 async def test_openai_compatible_analyzer_parses_json_payload(monkeypatch: pytest.MonkeyPatch) -> None:
-    analyzer = MistralArchitectureAnalyzer(
+    analyzer = ArchitectureLlmAnalyzerImpl(
         api_key="test-key",
         base_url="https://example.test",
         model="mistral-7b-instruct",
@@ -85,7 +85,7 @@ async def test_openai_compatible_analyzer_parses_json_payload(monkeypatch: pytes
 async def test_openai_compatible_analyzer_moves_summary_to_first_recommendation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    analyzer = MistralArchitectureAnalyzer(
+    analyzer = ArchitectureLlmAnalyzerImpl(
         api_key="test-key",
         base_url="https://example.test",
         model="mistral-7b-instruct",
@@ -133,7 +133,7 @@ async def test_openai_compatible_analyzer_moves_summary_to_first_recommendation(
 async def test_openai_compatible_analyzer_raises_for_http_error_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    analyzer = MistralArchitectureAnalyzer(
+    analyzer = ArchitectureLlmAnalyzerImpl(
         api_key="test-key",
         base_url="https://example.test",
         model="mistral-7b-instruct",
@@ -169,7 +169,7 @@ async def test_openai_compatible_analyzer_raises_for_http_error_status(
 async def test_openai_compatible_analyzer_retries_without_response_format_for_schema_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    analyzer = MistralArchitectureAnalyzer(
+    analyzer = ArchitectureLlmAnalyzerImpl(
         api_key="test-key",
         base_url="https://example.test",
         model="mistral-7b-instruct",

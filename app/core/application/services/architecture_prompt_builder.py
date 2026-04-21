@@ -1,11 +1,12 @@
 import json
 
+from app.core.application.ports.architecture_prompt_builder import ArchitecturePromptBuilder
 from app.core.domain.entities.architectural_validation import ArchitecturalValidationResult
 from app.core.domain.entities.graph import Graph
 
 
-class MistralArchitecturePromptBuilder:
-    """Builds an instruction prompt optimized for Mistral 7B JSON output."""
+class MistralArchitecturePromptBuilder(ArchitecturePromptBuilder):
+    """Builds an instruction prompt for architecture risk analysis JSON output."""
 
     def build_messages(
         self,

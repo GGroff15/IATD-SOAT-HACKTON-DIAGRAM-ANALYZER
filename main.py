@@ -15,14 +15,14 @@ from app.adapter.driven.detection.yolo_connection_detector import YoloConnection
 from app.adapter.driven.detection.yolo_inference_client import YoloInferenceClient
 from app.adapter.driven.ocr.paddle_ocr import PaddleOCRExtractor
 from app.adapter.driven.llm.openai_compatible_architecture_llm_analyzer import (
-    MistralArchitectureAnalyzer,
+    ArchitectureLlmAnalyzerImpl,
 )
 from app.core.application.services.architectural_rules_validator_service import (
     ArchitecturalRulesValidatorService,
 )
 from app.core.application.services.diagram_upload_processor import DiagramUploadProcessor
 from app.core.application.services.graph_builder_service import GraphBuilderService
-from app.core.application.services.mistral_architecture_prompt_builder import (
+from app.core.application.services.architecture_prompt_builder import (
     MistralArchitecturePromptBuilder,
 )
 
@@ -163,7 +163,7 @@ def build_application():
     architectural_rules_validator = ArchitecturalRulesValidatorService()
     architecture_llm_analyzer = None
     if settings.OPENAI_API_KEY:
-        architecture_llm_analyzer = MistralArchitectureAnalyzer(
+        architecture_llm_analyzer = ArchitectureLlmAnalyzerImpl(
             api_key=settings.OPENAI_API_KEY,
             base_url=settings.OPENAI_BASE_URL,
             model=settings.OPENAI_MODEL,

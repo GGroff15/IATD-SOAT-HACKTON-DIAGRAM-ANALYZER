@@ -7,15 +7,13 @@ import httpx
 
 from app.core.application.exceptions import LlmInferenceError
 from app.core.application.ports.architecture_llm_analyzer import ArchitectureLlmAnalyzer
-from app.core.application.services.mistral_architecture_prompt_builder import (
-    MistralArchitecturePromptBuilder,
-)
+from app.core.application.ports.architecture_prompt_builder import ArchitecturePromptBuilder
 from app.core.domain.entities.architectural_validation import ArchitecturalValidationResult
 from app.core.domain.entities.graph import Graph
 from app.core.domain.entities.llm_architecture_analysis import LlmArchitectureAnalysis
 
 
-class MistralArchitectureAnalyzer(ArchitectureLlmAnalyzer):
+class ArchitectureLlmAnalyzerImpl(ArchitectureLlmAnalyzer):
     """Driven adapter for Mistral Chat Completions inference."""
 
     def __init__(
@@ -23,11 +21,11 @@ class MistralArchitectureAnalyzer(ArchitectureLlmAnalyzer):
         api_key: str,
         base_url: str,
         model: str,
-        chat_completions_path: str = "/v1/chat/completions",
-        timeout_seconds: float = 20.0,
-        temperature: float = 0.1,
-        max_tokens: int = 900,
-        prompt_builder: MistralArchitecturePromptBuilder | None = None,
+        chat_completions_path,
+        timeout_seconds,
+        temperature,
+        max_tokens,
+        prompt_builder: ArchitecturePromptBuilder,
     ) -> None:
         if not api_key.strip():
             raise ValueError("api_key must be a non-empty string")
@@ -47,7 +45,7 @@ class MistralArchitectureAnalyzer(ArchitectureLlmAnalyzer):
         self._timeout_seconds = timeout_seconds
         self._temperature = temperature
         self._max_tokens = max_tokens
-        self._prompt_builder = prompt_builder or MistralArchitecturePromptBuilder()
+        self._prompt_builder = prompt_builder
 
     async def analyze(
         self,
@@ -156,10 +154,10 @@ class MistralArchitectureAnalyzer(ArchitectureLlmAnalyzer):
         if not isinstance(recommendations_raw, list):
             raise LlmInferenceError("'recommendations' must be a list")
 
-        risks = MistralArchitectureAnalyzer._normalize_string_list(
+        risks = ArchitectureLlmAnalyzerImpl._normalize_string_list(
             risks_raw, "risks"
         )
-        recommendations = MistralArchitectureAnalyzer._normalize_string_list(
+        recommendations = ArchitectureLlmAnalyzerImpl._normalize_string_list(
             recommendations_raw, "recommendations"
         )
 

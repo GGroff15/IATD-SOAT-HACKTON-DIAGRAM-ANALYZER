@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from app.core.application.services.mistral_architecture_prompt_builder import (
+from app.core.application.services.architecture_prompt_builder import (
     MistralArchitecturePromptBuilder,
 )
 from app.core.domain.entities.architectural_validation import (
