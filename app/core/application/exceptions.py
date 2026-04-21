@@ -40,3 +40,7 @@ class TextExtractionError(DiagramAnalyzerException):
 
 class ArchitecturalValidationExecutionError(DiagramAnalyzerException):
     """Raised when architectural validation fails due to a technical/runtime error."""
+
+
+class LlmInferenceError(DiagramAnalyzerException):
+    """Raised when LLM inference fails due to request/response/runtime issues."""

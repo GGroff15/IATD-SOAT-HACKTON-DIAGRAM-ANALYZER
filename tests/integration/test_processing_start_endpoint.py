@@ -174,6 +174,8 @@ def test_processing_start_endpoint_publishes_graph_with_validation_result() -> N
     graph_result_publisher.publish_graph.assert_awaited_once_with(
         graph_builder.build.return_value,
         architectural_rules_validator.validate.return_value,
+        None,
+        None,
     )
 
 

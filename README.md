@@ -21,6 +21,16 @@ Required environment configuration:
 - `YOLO_INFERENCE_INFER_PATH` (default: `/infer`)
 - `YOLO_INFERENCE_TIMEOUT_SECONDS` (default: `10.0`)
 
+Optional OpenAI-compatible LLM analysis configuration:
+
+- `OPENAI_API_KEY` (empty disables LLM analysis)
+- `OPENAI_BASE_URL` (default: `https://api.openai.com`)
+- `OPENAI_CHAT_COMPLETIONS_PATH` (default: `/v1/chat/completions`)
+- `OPENAI_MODEL` (default: `mistral-7b-instruct`)
+- `OPENAI_TIMEOUT_SECONDS` (default: `20.0`)
+- `OPENAI_TEMPERATURE` (default: `0.1`)
+- `OPENAI_MAX_TOKENS` (default: `900`)
+
 The analyzer sends each converted image to the configured `POST /infer` endpoint as multipart form data (`file` field) and expects:
 
 ```json

@@ -1,5 +1,10 @@
-from pydantic_settings import BaseSettings
+from pathlib import Path
 from typing import Optional
+
+from pydantic_settings import BaseSettings
+
+
+DEFAULT_ENV_FILE_PATH = Path(__file__).resolve().parents[3] / ".env"
 
 
 class Settings(BaseSettings):
@@ -18,6 +23,15 @@ class Settings(BaseSettings):
     YOLO_INFERENCE_TIMEOUT_SECONDS: float = 10.0
     YOLO_CONNECTION_ARROW_LINE_CLASS: str = "arrow_line"
     YOLO_CONNECTION_ARROW_HEAD_CLASS: str = "arrow_head"
+
+    # OpenAI-compatible LLM inference settings
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_BASE_URL: str = "https://api.openai.com"
+    OPENAI_CHAT_COMPLETIONS_PATH: str = "/v1/chat/completions"
+    OPENAI_MODEL: str = "mistral-7b-instruct"
+    OPENAI_TIMEOUT_SECONDS: float = 20.0
+    OPENAI_TEMPERATURE: float = 0.1
+    OPENAI_MAX_TOKENS: int = 900
 
     # PaddleOCR Settings
     PADDLE_OCR_LANG: str = "en"

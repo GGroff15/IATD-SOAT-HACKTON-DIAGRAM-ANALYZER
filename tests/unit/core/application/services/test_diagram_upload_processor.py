@@ -11,6 +11,7 @@ from app.core.application.exceptions import (
     ArchitecturalValidationExecutionError,
     ImageConversionError,
     DiagramDetectionError,
+    LlmInferenceError,
     TextExtractionError,
     ConnectionDetectionError,
 )
@@ -18,6 +19,7 @@ from app.core.domain.entities.architectural_validation import (
     ArchitecturalRuleViolation,
     ArchitecturalValidationResult,
 )
+from app.core.domain.entities.llm_architecture_analysis import LlmArchitectureAnalysis
 
 
 class MockFileStorage:
@@ -78,6 +80,21 @@ class MockArchitecturalRulesValidator:
                 diagram_upload_id=uuid4(),
                 is_valid=True,
                 violations=tuple(),
+            )
+        )
+
+
+class MockArchitectureLlmAnalyzer:
+    """Mock architecture LLM analyzer for testing."""
+
+    def __init__(self):
+        self.analyze = AsyncMock(
+            return_value=LlmArchitectureAnalysis(
+                risks=("Excessive sync coupling between services",),
+                recommendations=(
+                    "Overall architecture has moderate risk concentrated in service coupling.",
+                    "Reduce synchronous calls by introducing async integration boundaries.",
+                ),
             )
         )
 
@@ -678,6 +695,8 @@ async def test_processor_builds_graph_from_final_result():
     mock_graph_result_publisher.publish_graph.assert_awaited_once_with(
         mock_graph_builder.build.return_value,
         mock_architectural_rules_validator.validate.return_value,
+        None,
+        None,
     )
 
 
@@ -722,6 +741,8 @@ async def test_processor_continues_publishing_when_architectural_violations_exis
     mock_graph_result_publisher.publish_graph.assert_awaited_once_with(
         mock_graph_builder.build.return_value,
         mock_architectural_rules_validator.validate.return_value,
+        None,
+        None,
     )
 
 
@@ -750,4 +771,81 @@ async def test_processor_raises_technical_validation_error_when_validator_crashe
 
     with pytest.raises(ArchitecturalValidationExecutionError, match="validator crashed"):
         await processor.process(upload)
+
+
+@pytest.mark.asyncio
+async def test_processor_publishes_llm_analysis_when_available():
+    """Test that processor includes LLM analysis in published payload."""
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf")
+    mock_storage = MockFileStorage()
+    mock_converter = MockImageConverter()
+    mock_detector = MockDiagramDetector()
+    mock_connection_detector = MockConnectionDetector()
+    mock_extractor = MockTextExtractor()
+    mock_graph_builder = MockGraphBuilder()
+    mock_graph_result_publisher = MockGraphResultPublisher()
+    mock_architectural_rules_validator = MockArchitecturalRulesValidator()
+    mock_llm_analyzer = MockArchitectureLlmAnalyzer()
+
+    processor = DiagramUploadProcessor(
+        file_storage=mock_storage,
+        image_converter=mock_converter,
+        component_detector=mock_detector,
+        connection_detector=mock_connection_detector,
+        text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
+        architectural_rules_validator=mock_architectural_rules_validator,
+        architecture_llm_analyzer=mock_llm_analyzer,
+        graph_result_publisher=mock_graph_result_publisher,
+    )
+
+    await processor.process(upload)
+
+    mock_llm_analyzer.analyze.assert_awaited_once_with(
+        graph=mock_graph_builder.build.return_value,
+        validation_result=mock_architectural_rules_validator.validate.return_value,
+    )
+    mock_graph_result_publisher.publish_graph.assert_awaited_once_with(
+        mock_graph_builder.build.return_value,
+        mock_architectural_rules_validator.validate.return_value,
+        mock_llm_analyzer.analyze.return_value,
+        None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_processor_continues_when_llm_fails_and_publishes_error_metadata():
+    """Test that processor continues with LLM error metadata when inference fails."""
+    upload = DiagramUpload(uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf")
+    mock_storage = MockFileStorage()
+    mock_converter = MockImageConverter()
+    mock_detector = MockDiagramDetector()
+    mock_connection_detector = MockConnectionDetector()
+    mock_extractor = MockTextExtractor()
+    mock_graph_builder = MockGraphBuilder()
+    mock_graph_result_publisher = MockGraphResultPublisher()
+    mock_architectural_rules_validator = MockArchitecturalRulesValidator()
+    mock_llm_analyzer = MockArchitectureLlmAnalyzer()
+    mock_llm_analyzer.analyze.side_effect = LlmInferenceError("gateway timeout")
+
+    processor = DiagramUploadProcessor(
+        file_storage=mock_storage,
+        image_converter=mock_converter,
+        component_detector=mock_detector,
+        connection_detector=mock_connection_detector,
+        text_extractor=mock_extractor,
+        graph_builder=mock_graph_builder,
+        architectural_rules_validator=mock_architectural_rules_validator,
+        architecture_llm_analyzer=mock_llm_analyzer,
+        graph_result_publisher=mock_graph_result_publisher,
+    )
+
+    await processor.process(upload)
+
+    publish_call_args = mock_graph_result_publisher.publish_graph.await_args.args
+    assert publish_call_args[0] == mock_graph_builder.build.return_value
+    assert publish_call_args[1] == mock_architectural_rules_validator.validate.return_value
+    assert publish_call_args[2] is None
+    assert publish_call_args[3].code == "LLM_INFERENCE_ERROR"
+    assert publish_call_args[3].message == "gateway timeout"
 
