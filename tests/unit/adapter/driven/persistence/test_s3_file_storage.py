@@ -1,102 +1,88 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
+
+import httpx
 import pytest
-from botocore.exceptions import ClientError
 
 from app.adapter.driven.persistence.s3_file_storage import S3FileStorage
 from app.core.application.exceptions import FileNotFoundError, FileStorageError
 
 
 @pytest.fixture
-def mock_s3_client():
-    """Mock S3 client for testing"""
-    return MagicMock()
+def mock_http_client():
+    """Mock HTTP client for testing."""
+    client = MagicMock()
+    client.get = AsyncMock()
+    return client
 
 
 @pytest.fixture
-def s3_storage(mock_s3_client):
-    """S3FileStorage instance with mocked client"""
-    return S3FileStorage(s3_client=mock_s3_client, bucket_name="test-bucket")
+def s3_storage(mock_http_client):
+    """S3FileStorage instance with mocked HTTP client."""
+    return S3FileStorage(http_client=mock_http_client)
 
 
 @pytest.mark.asyncio
-async def test_download_file_success(s3_storage, mock_s3_client):
-    """Test successful file download"""
+async def test_download_file_success(s3_storage, mock_http_client):
+    """Test successful file download."""
     # Arrange
+    file_url = "https://example.com/test-folder/test-file.pdf"
     expected_content = b"file content"
-    mock_response = {"Body": MagicMock()}
-    mock_response["Body"].read = MagicMock(return_value=expected_content)
-    mock_s3_client.get_object.return_value = mock_response
-    
+    request = httpx.Request("GET", file_url)
+    mock_http_client.get.return_value = httpx.Response(
+        200,
+        content=expected_content,
+        request=request,
+    )
+
     # Act
-    result = await s3_storage.download_file(file_url="s3://test-bucket/test-folder/test-file.pdf")
-    
+    result = await s3_storage.download_file(file_url=file_url)
+
     # Assert
     assert result == expected_content
-    mock_s3_client.get_object.assert_called_once_with(
-        Bucket="test-bucket",
-        Key="test-folder/test-file.pdf"
-    )
+    mock_http_client.get.assert_awaited_once_with(file_url)
 
 
 @pytest.mark.asyncio
-async def test_download_file_not_found(s3_storage, mock_s3_client):
-    """Test file not found raises FileNotFoundError"""
+async def test_download_file_not_found(s3_storage, mock_http_client):
+    """Test file not found raises FileNotFoundError."""
     # Arrange
-    error_response = {"Error": {"Code": "NoSuchKey"}}
-    mock_s3_client.get_object.side_effect = ClientError(
-        error_response, "GetObject"
-    )
-    
+    file_url = "https://example.com/test-folder/missing-file.pdf"
+    request = httpx.Request("GET", file_url)
+    mock_http_client.get.return_value = httpx.Response(404, request=request)
+
     # Act & Assert
-    with pytest.raises(FileNotFoundError, match="not found in bucket"):
-        await s3_storage.download_file(file_url="s3://test-bucket/test-folder/missing-file.pdf")
+    with pytest.raises(FileNotFoundError, match="not found"):
+        await s3_storage.download_file(file_url=file_url)
 
 
 @pytest.mark.asyncio
-async def test_download_file_client_error(s3_storage, mock_s3_client):
-    """Test other client errors raise FileStorageError"""
+async def test_download_file_http_error(s3_storage, mock_http_client):
+    """Test non-404 HTTP errors raise FileStorageError."""
     # Arrange
-    error_response = {"Error": {"Code": "AccessDenied"}}
-    mock_s3_client.get_object.side_effect = ClientError(
-        error_response, "GetObject"
-    )
-    
+    file_url = "https://example.com/test-folder/test-file.pdf"
+    request = httpx.Request("GET", file_url)
+    mock_http_client.get.return_value = httpx.Response(403, request=request)
+
     # Act & Assert
-    with pytest.raises(FileStorageError, match="Failed to download file"):
-        await s3_storage.download_file(file_url="s3://test-bucket/test-folder/test-file.pdf")
+    with pytest.raises(FileStorageError, match="HTTP 403"):
+        await s3_storage.download_file(file_url=file_url)
 
 
 @pytest.mark.asyncio
-async def test_download_file_generic_exception(s3_storage, mock_s3_client):
-    """Test generic exceptions raise FileStorageError"""
+async def test_download_file_request_error(s3_storage, mock_http_client):
+    """Test request errors raise FileStorageError."""
     # Arrange
-    mock_s3_client.get_object.side_effect = Exception("Unexpected error")
-    
+    file_url = "https://example.com/test-folder/test-file.pdf"
+    request = httpx.Request("GET", file_url)
+    mock_http_client.get.side_effect = httpx.RequestError("network error", request=request)
+
     # Act & Assert
-    with pytest.raises(FileStorageError, match="Unexpected error during file download"):
-        await s3_storage.download_file(file_url="s3://test-bucket/test-folder/test-file.pdf")
+    with pytest.raises(FileStorageError, match="network error"):
+        await s3_storage.download_file(file_url=file_url)
 
 
 @pytest.mark.asyncio
-async def test_download_file_constructs_correct_key(s3_storage, mock_s3_client):
-    """Test S3 key construction with different parameters"""
-    # Arrange
-    mock_response = {"Body": MagicMock()}
-    mock_response["Body"].read = MagicMock(return_value=b"content")
-    mock_s3_client.get_object.return_value = mock_response
-    
-    # Act
-    await s3_storage.download_file(file_url="s3://test-bucket/my-folder/subfolder/diagram-123.png")
-    
-    # Assert
-    mock_s3_client.get_object.assert_called_once_with(
-        Bucket="test-bucket",
-        Key="my-folder/subfolder/diagram-123.png"
-    )
-
-
-@pytest.mark.asyncio
-async def test_download_file_rejects_non_s3_uri(s3_storage):
-    """Test non-S3 URIs are rejected with explicit storage error."""
-    with pytest.raises(FileStorageError, match="Only s3:// URIs are supported"):
-        await s3_storage.download_file(file_url="https://example.com/test.pdf")
+async def test_download_file_rejects_non_http_url(s3_storage):
+    """Test non-http(s) URLs are rejected with explicit storage error."""
+    with pytest.raises(FileStorageError, match="Only http\(s\) URLs are supported"):
+        await s3_storage.download_file(file_url="s3://example-bucket/test.pdf")

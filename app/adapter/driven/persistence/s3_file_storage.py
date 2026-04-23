@@ -1,5 +1,7 @@
+from urllib.parse import urlsplit, urlunsplit
+
+import httpx
 import structlog
-from botocore.exceptions import ClientError
 
 from app.core.application.exceptions import FileNotFoundError, FileStorageError
 
@@ -7,96 +9,86 @@ logger = structlog.get_logger()
 
 
 class S3FileStorage:
-    """S3 implementation of FileStorage port for downloading diagram files."""
+    """HTTP-based implementation of FileStorage for bucket URLs."""
 
-    def __init__(self, s3_client, bucket_name: str):
-        """Initialize S3 file storage adapter.
+    def __init__(self, http_client: httpx.AsyncClient):
+        """Initialize file storage adapter.
 
         Args:
-            s3_client: Boto3 S3 client instance
-            bucket_name: Name of the S3 bucket to use
+            http_client: Async HTTP client for downloading files
         """
-        self.s3_client = s3_client
-        self.bucket_name = bucket_name
+        self.http_client = http_client
 
     async def download_file(self, file_url: str) -> bytes:
-        """Download a file from S3 storage.
+        """Download a file from an HTTP(S) URL.
 
         Args:
-            file_url: Direct S3 URI locator in s3://bucket/key format
+            file_url: HTTP(S) URL pointing to the diagram file
 
         Returns:
             The file content as bytes
 
         Raises:
-            FileNotFoundError: If the file does not exist in S3
+            FileNotFoundError: If the file does not exist
             FileStorageError: If the download operation fails
         """
-        bucket, key = self._resolve_from_file_url(file_url)
-        
-        logger.info(
-            "s3.download_file.start",
-            bucket=bucket,
-            key=key,
-            file_url=file_url,
-        )
-        
-        try:
-            response = self.s3_client.get_object(Bucket=bucket, Key=key)
-            content = response["Body"].read()
-            
-            logger.info(
-                "s3.download_file.success",
-                bucket=bucket,
-                key=key,
-                size_bytes=len(content),
-            )
-            
-            return content
-            
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "Unknown")
-            
-            if error_code == "NoSuchKey":
-                logger.warning(
-                    "s3.download_file.not_found",
-                    bucket=bucket,
-                    key=key,
-                )
-                raise FileNotFoundError(
-                    f"File {key} not found in bucket {bucket}"
-                ) from e
-            
-            logger.error(
-                "s3.download_file.client_error",
-                bucket=bucket,
-                key=key,
-                error_code=error_code,
-                error=str(e),
-            )
-            raise FileStorageError(
-                f"Failed to download file {key} from S3: {error_code}"
-            ) from e
-            
-        except Exception as e:
-            logger.error(
-                "s3.download_file.unexpected_error",
-                bucket=bucket,
-                key=key,
-                error=str(e),
-            )
-            raise FileStorageError(
-                f"Unexpected error during file download: {str(e)}"
-            ) from e
-
-    def _resolve_from_file_url(self, file_url: str) -> tuple[str, str]:
         normalized_file_url = file_url.strip()
-        if not normalized_file_url.startswith("s3://"):
-            raise FileStorageError("Only s3:// URIs are supported for file download")
+        redacted_url = _redact_url(normalized_file_url)
+        parsed = urlsplit(normalized_file_url)
+        scheme = parsed.scheme.lower()
 
-        uri_without_scheme = normalized_file_url[len("s3://") :]
-        parts = uri_without_scheme.split("/", 1)
-        if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():
-            raise FileStorageError("S3 URI must include bucket and object key")
+        if scheme not in {"http", "https"}:
+            raise FileStorageError("Only http(s) URLs are supported for file download")
 
-        return parts[0], parts[1]
+        if not parsed.netloc:
+            raise FileStorageError("file_url must include a host")
+
+        logger.info(
+            "file.download.start",
+            file_url=redacted_url,
+        )
+
+        try:
+            response = await self.http_client.get(normalized_file_url)
+        except httpx.RequestError as error:
+            logger.error(
+                "file.download.request_error",
+                file_url=redacted_url,
+                error=str(error),
+            )
+            raise FileStorageError(
+                f"Failed to download file due to network error: {error}"
+            ) from error
+
+        if response.status_code == 404:
+            logger.warning(
+                "file.download.not_found",
+                file_url=redacted_url,
+                status_code=response.status_code,
+            )
+            raise FileNotFoundError(f"File not found at {redacted_url}")
+
+        if response.status_code >= 400:
+            logger.error(
+                "file.download.http_error",
+                file_url=redacted_url,
+                status_code=response.status_code,
+            )
+            raise FileStorageError(
+                f"Failed to download file: HTTP {response.status_code}"
+            )
+
+        content = response.content
+        logger.info(
+            "file.download.success",
+            file_url=redacted_url,
+            size_bytes=len(content),
+        )
+        return content
+
+
+def _redact_url(file_url: str) -> str:
+    parsed = urlsplit(file_url)
+    if not parsed.query and not parsed.fragment:
+        return file_url
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))

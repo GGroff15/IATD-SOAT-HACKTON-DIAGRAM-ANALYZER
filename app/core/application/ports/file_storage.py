@@ -8,7 +8,7 @@ class FileStorage(Protocol):
         """Download a file from storage.
 
         Args:
-            file_url: Direct storage locator. For S3, must be in s3://bucket/key format.
+            file_url: Direct HTTP(S) URL pointing to a diagram file.
 
         Returns:
             The file content as bytes

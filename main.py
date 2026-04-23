@@ -1,4 +1,4 @@
-import boto3
+import httpx
 import structlog
 import uvicorn
 from paddleocr import PaddleOCR
@@ -111,29 +111,16 @@ def build_application():
     try:
         settings = Settings()  # type: ignore[call-arg]
     except Exception:
-        print("Missing required configuration. Ensure S3_BUCKET_NAME is set in the environment or .env file.")
+        print("Missing required configuration. Check environment or .env file.")
         raise
 
-    # Create infrastructure clients
-    client_kwargs = {"region_name": settings.AWS_REGION}
-
-    if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
-        client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
-        client_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
-    if settings.AWS_SESSION_TOKEN:
-        client_kwargs["aws_session_token"] = settings.AWS_SESSION_TOKEN
-
-    if settings.AWS_ENDPOINT_URL:
-        client_kwargs["endpoint_url"] = settings.AWS_ENDPOINT_URL
-        # For LocalStack/local testing, provide dummy credentials if not configured
-        if "aws_access_key_id" not in client_kwargs:
-            client_kwargs["aws_access_key_id"] = "test"
-            client_kwargs["aws_secret_access_key"] = "test"
-    
-    s3_client = boto3.client("s3", **client_kwargs)
+    http_client = httpx.AsyncClient(
+        follow_redirects=True,
+        timeout=httpx.Timeout(settings.FILE_DOWNLOAD_TIMEOUT_SECONDS),
+    )
 
     # Create driven adapters (outbound ports)
-    file_storage = S3FileStorage(s3_client=s3_client, bucket_name=settings.S3_BUCKET_NAME)
+    file_storage = S3FileStorage(http_client=http_client)
     error_report_publisher = RabbitMqErrorReportPublisher(
         rabbitmq_host=settings.RABBITMQ_HOST,
         rabbitmq_port=settings.RABBITMQ_PORT,
@@ -195,10 +182,12 @@ def build_application():
         graph_result_publisher=graph_result_publisher,
     )
 
-    return create_app(
+    app = create_app(
         processor=processor.process,
         error_report_publisher=error_report_publisher,
-    ), settings
+    )
+    app.add_event_handler("shutdown", http_client.aclose)
+    return app, settings
 
 
 app, _settings = build_application()

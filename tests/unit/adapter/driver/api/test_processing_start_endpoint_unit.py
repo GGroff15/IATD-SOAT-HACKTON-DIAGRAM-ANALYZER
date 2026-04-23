@@ -32,7 +32,7 @@ def test_processing_start_returns_acknowledgment_with_protocol() -> None:
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440000",
             "file": {
-                "url": "s3://input-bucket/uploads/project-a/diagram.pdf",
+                "url": "https://example.com/uploads/project-a/diagram.pdf",
                 "mimetype": "application/pdf",
             },
         },
@@ -62,7 +62,7 @@ def test_processing_start_returns_accepted_immediately_while_processing_runs_asy
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440001",
             "file": {
-                "url": "s3://input-bucket/uploads/project-a/diagram.pdf",
+                "url": "https://example.com/uploads/project-a/diagram.pdf",
                 "mimetype": "application/pdf",
             },
         },
@@ -84,7 +84,7 @@ def test_processing_start_rejects_missing_required_field() -> None:
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440000",
             "file": {
-                "url": "s3://input-bucket/uploads/project-a/diagram.pdf",
+                "url": "https://example.com/uploads/project-a/diagram.pdf",
             },
         },
     )
@@ -93,7 +93,7 @@ def test_processing_start_rejects_missing_required_field() -> None:
     processor.assert_not_awaited()
 
 
-def test_processing_start_rejects_non_s3_url() -> None:
+def test_processing_start_rejects_non_http_url() -> None:
     processor = AsyncMock()
     reporter = AsyncMock()
     client = TestClient(create_app(processor=processor, error_report_publisher=reporter))
@@ -103,14 +103,14 @@ def test_processing_start_rejects_non_s3_url() -> None:
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440000",
             "file": {
-                "url": "https://example.com/diagram.pdf",
+                "url": "s3://example-bucket/diagram.pdf",
                 "mimetype": "application/pdf",
             },
         },
     )
 
     assert response.status_code == 422
-    assert "s3://" in response.json()["detail"]
+    assert "http" in response.json()["detail"].lower()
     processor.assert_not_awaited()
 
 
@@ -130,7 +130,7 @@ def test_processing_start_accepts_root_object_key_without_folder_extraction() ->
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440002",
             "file": {
-                "url": "s3://input-bucket/diagram.pdf",
+                "url": "https://example.com/diagram.pdf",
                 "mimetype": "application/pdf",
             },
         },
@@ -139,7 +139,7 @@ def test_processing_start_accepts_root_object_key_without_folder_extraction() ->
     assert response.status_code == 202
     assert processed.wait(timeout=1.0)
     upload = captured["upload"]
-    assert upload.file_url == "s3://input-bucket/diagram.pdf"
+    assert upload.file_url == "https://example.com/diagram.pdf"
     assert upload.diagram_upload_id == UUID("550e8400-e29b-41d4-a716-446655440002")
 
 
@@ -158,7 +158,7 @@ def test_processing_start_reports_background_processing_failure() -> None:
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440000",
             "file": {
-                "url": "s3://input-bucket/uploads/project-a/diagram.pdf",
+                "url": "https://example.com/uploads/project-a/diagram.pdf",
                 "mimetype": "application/pdf",
             },
         },
@@ -188,7 +188,7 @@ def test_processing_start_returns_response_when_error_report_publication_fails()
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440003",
             "file": {
-                "url": "s3://input-bucket/uploads/project-a/diagram.pdf",
+                "url": "https://example.com/uploads/project-a/diagram.pdf",
                 "mimetype": "application/pdf",
             },
         },

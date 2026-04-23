@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from contextvars import copy_context
 from typing import Annotated
+from urllib.parse import urlsplit
 from uuid import UUID
 
 import structlog
@@ -21,7 +22,7 @@ logger = structlog.get_logger()
 
 
 class ProcessingStartFileRequest(BaseModel):
-    url: str = Field(..., description="S3 URI for the diagram file")
+    url: str = Field(..., description="HTTP(S) URL for the diagram file")
     mimetype: str = Field(..., min_length=1, description="MIME type of the uploaded diagram")
 
 
@@ -35,18 +36,18 @@ class ProcessingStartResponse(BaseModel):
     protocol: str
 
 
-def _parse_upload_from_s3_uri(file_url: str, mimetype: str, protocol: str) -> DiagramUpload:
+def _parse_upload_from_url(file_url: str, mimetype: str, protocol: str) -> DiagramUpload:
     normalized_file_url = file_url.strip()
+    parsed = urlsplit(normalized_file_url)
+    scheme = parsed.scheme.lower()
 
-    if not normalized_file_url.startswith("s3://"):
-        raise ValueError("file.url must be a valid s3:// URI")
+    if scheme not in {"http", "https"}:
+        raise ValueError("file.url must be a valid http(s) URL")
 
-    uri_without_scheme = normalized_file_url[len("s3://") :]
-    parts = uri_without_scheme.split("/", 1)
-    if len(parts) != 2 or not parts[1].strip():
-        raise ValueError("file.url must include bucket and object key")
+    if not parsed.netloc:
+        raise ValueError("file.url must include a host")
 
-    object_key = parts[1]
+    object_key = parsed.path.rsplit("/", 1)[-1]
     suffix_index = object_key.rfind(".")
     extension = object_key[suffix_index:] if suffix_index > -1 else ""
 
@@ -169,7 +170,7 @@ def create_app(
     )
     async def processing_start(request: ProcessingStartRequest) -> ProcessingStartResponse:
         try:
-            upload = _parse_upload_from_s3_uri(
+            upload = _parse_upload_from_url(
                 request.file.url,
                 request.file.mimetype,
                 request.protocol,
