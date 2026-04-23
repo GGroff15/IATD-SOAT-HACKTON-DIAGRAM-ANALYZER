@@ -3,7 +3,6 @@ import structlog
 from app.core.domain.entities.architectural_validation import ArchitecturalValidationResult
 from app.core.domain.entities.graph import Graph
 from app.core.domain.entities.llm_architecture_analysis import (
-    LlmAnalysisErrorMetadata,
     LlmArchitectureAnalysis,
 )
 
@@ -16,7 +15,6 @@ class NoOpGraphResultPublisher:
         graph: Graph,
         validation_result: ArchitecturalValidationResult,
         llm_analysis: LlmArchitectureAnalysis | None,
-        llm_error: LlmAnalysisErrorMetadata | None,
     ) -> None:
         logger.info(
             "graph_result.noop_published",
@@ -29,5 +27,4 @@ class NoOpGraphResultPublisher:
             llm_recommendation_count=(
                 len(llm_analysis.recommendations) if llm_analysis is not None else 0
             ),
-            llm_error_code=llm_error.code if llm_error is not None else None,
         )

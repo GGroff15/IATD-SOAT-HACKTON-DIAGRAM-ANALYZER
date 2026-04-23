@@ -14,7 +14,6 @@ from app.core.domain.entities.detected_component import DetectedComponent
 from app.core.domain.entities.diagram_analysis_result import DiagramAnalysisResult
 from app.core.domain.entities.graph import Graph
 from app.core.domain.entities.llm_architecture_analysis import (
-    LlmAnalysisErrorMetadata,
     LlmArchitectureAnalysis,
 )
 from app.core.application.ports.architectural_rules_validator import ArchitecturalRulesValidator
@@ -185,14 +184,13 @@ class DiagramUploadProcessor:
 
         graph = self.graph_builder.build(final_result)
         validation_result = self._validate_architectural_rules(graph)
-        llm_analysis, llm_error = await self._analyze_with_llm(graph, validation_result)
+        llm_analysis = await self._analyze_with_llm(graph, validation_result)
 
         if self.graph_result_publisher is not None:
             await self.graph_result_publisher.publish_graph(
                 graph,
                 validation_result,
-                llm_analysis,
-                llm_error,
+                llm_analysis
             )
         
         logger.info(
@@ -206,7 +204,6 @@ class DiagramUploadProcessor:
             architectural_is_valid=validation_result.is_valid,
             architectural_violation_count=len(validation_result.violations),
             llm_analysis_available=llm_analysis is not None,
-            llm_error_code=llm_error.code if llm_error is not None else None,
         )
 
     def _validate_architectural_rules(self, graph: Graph) -> ArchitecturalValidationResult:
@@ -234,9 +231,9 @@ class DiagramUploadProcessor:
         self,
         graph: Graph,
         validation_result: ArchitecturalValidationResult,
-    ) -> tuple[LlmArchitectureAnalysis | None, LlmAnalysisErrorMetadata | None]:
+    ) -> LlmArchitectureAnalysis | None:
         if self.architecture_llm_analyzer is None:
-            return None, None
+            return None
 
         try:
             llm_analysis = await self.architecture_llm_analyzer.analyze(
@@ -244,14 +241,11 @@ class DiagramUploadProcessor:
                 validation_result=validation_result,
             )
             
-            return llm_analysis, None
+            return llm_analysis
         except LlmInferenceError as error:
             logger.warning(
                 "diagram_upload.process.llm_analysis_failed",
                 diagram_upload_id=str(graph.diagram_upload_id),
                 error=str(error),
             )
-            return None, LlmAnalysisErrorMetadata(
-                code="LLM_INFERENCE_ERROR",
-                message=str(error),
-            )
+            raise LlmInferenceError(f"LLM analysis failed: {error}") from error
