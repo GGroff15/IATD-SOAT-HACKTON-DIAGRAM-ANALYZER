@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     CONNECTION_ARROW_WINDOW_SIZE: int = 14
     CONNECTION_MAX_CONNECTIONS_PER_COMPONENT_PAIR: int = 1
 
+    RABBITMQ_HOST: str = "localhost"
+    RABBITMQ_PORT: int = 5672
+    RABBITMQ_QUEUE_NAME: str = "analisys_response"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

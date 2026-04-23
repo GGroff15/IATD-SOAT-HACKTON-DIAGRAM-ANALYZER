@@ -4,8 +4,6 @@ from app.core.application.exceptions import FileStorageError
 from app.core.application.exceptions import (
     ArchitecturalValidationExecutionError,
     LlmInferenceError,
-    TextExtractionError,
-    ConnectionDetectionError,
 )
 from app.core.application.ports.architecture_llm_analyzer import ArchitectureLlmAnalyzer
 from app.core.domain.entities.architectural_validation import ArchitecturalValidationResult
@@ -117,53 +115,33 @@ class DiagramUploadProcessor:
         )
         
         # Detect connections between components
-        connections = tuple()
-        try:
-            connections = self.connection_detector.detect(
-                image_bytes=image_bytes,
-                components=analysis_result.components,
-            )
-            logger.info(
-                "diagram_upload.process.connections_detected",
-                diagram_upload_id=str(upload.diagram_upload_id),
-                connection_count=len(connections),
-            )
-        except ConnectionDetectionError as e:
-            logger.warning(
-                "diagram_upload.process.connection_detection_failed",
-                diagram_upload_id=str(upload.diagram_upload_id),
-                error=str(e),
-            )
-            # Continue processing with empty connections
+        connections: tuple = self.connection_detector.detect(
+            image_bytes=image_bytes,
+            components=analysis_result.components,
+        )
+        logger.info(
+            "diagram_upload.process.connections_detected",
+            diagram_upload_id=str(upload.diagram_upload_id),
+            connection_count=len(connections),
+        )
         
         # Extract text from each detected component
         enriched_components = []
         for component in analysis_result.components:
-            extracted_text = None
-            try:
-                extracted_text = self.text_extractor.extract_text(
-                    image_bytes=image_bytes,
-                    x=component.x,
-                    y=component.y,
-                    width=component.width,
-                    height=component.height,
-                )
-                logger.debug(
-                    "diagram_upload.process.text_extracted",
-                    diagram_upload_id=str(upload.diagram_upload_id),
-                    class_name=component.class_name,
-                    text_length=len(extracted_text),
-                )
-            except TextExtractionError as e:
-                logger.warning(
-                    "diagram_upload.process.text_extraction_failed",
-                    diagram_upload_id=str(upload.diagram_upload_id),
-                    class_name=component.class_name,
-                    error=str(e),
-                )
-                # Continue processing with None for extracted_text
+            extracted_text = self.text_extractor.extract_text(
+                image_bytes=image_bytes,
+                x=component.x,
+                y=component.y,
+                width=component.width,
+                height=component.height,
+            )
+            logger.debug(
+                "diagram_upload.process.text_extracted",
+                diagram_upload_id=str(upload.diagram_upload_id),
+                class_name=component.class_name,
+                text_length=len(extracted_text),
+            )
             
-            # Create enriched component with extracted text
             enriched_component = DetectedComponent(
                 class_name=component.class_name,
                 confidence=component.confidence,
@@ -175,7 +153,6 @@ class DiagramUploadProcessor:
             )
             enriched_components.append(enriched_component)
         
-        # Create final analysis result with components and connections
         final_result = DiagramAnalysisResult(
             diagram_upload_id=upload.diagram_upload_id,
             components=tuple(enriched_components),

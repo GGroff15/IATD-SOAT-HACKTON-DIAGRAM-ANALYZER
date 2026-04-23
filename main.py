@@ -3,9 +3,9 @@ import structlog
 import uvicorn
 from paddleocr import PaddleOCR
 
+from app.adapter.driven.event_publishers.error_report_publisher import RabbitMqErrorReportPublisher
+from app.adapter.driven.event_publishers.graph_result_publisher import RabbitMqGraphResultPublisher
 from app.adapter.driver.api.processing_start_endpoint import create_app
-from app.adapter.driven.event_publishers.noop_error_report_publisher import NoOpErrorReportPublisher
-from app.adapter.driven.event_publishers.noop_graph_result_publisher import NoOpGraphResultPublisher
 from app.infrastructure.logging.config import configure_logging
 from app.infrastructure.config.settings import Settings
 from app.adapter.driven.persistence.s3_file_storage import S3FileStorage
@@ -134,8 +134,16 @@ def build_application():
 
     # Create driven adapters (outbound ports)
     file_storage = S3FileStorage(s3_client=s3_client, bucket_name=settings.S3_BUCKET_NAME)
-    error_report_publisher = NoOpErrorReportPublisher()
-    graph_result_publisher = NoOpGraphResultPublisher()
+    error_report_publisher = RabbitMqErrorReportPublisher(
+        rabbitmq_host=settings.RABBITMQ_HOST,
+        rabbitmq_port=settings.RABBITMQ_PORT,
+        rabbitmq_queue_name=settings.RABBITMQ_QUEUE_NAME,
+    )
+    graph_result_publisher = RabbitMqGraphResultPublisher(
+        rabbitmq_host=settings.RABBITMQ_HOST,
+        rabbitmq_port=settings.RABBITMQ_PORT,
+        rabbitmq_queue_name=settings.RABBITMQ_QUEUE_NAME,
+    )
     image_converter = Pdf2ImageConverter()
     inference_client = YoloInferenceClient(
         base_url=settings.YOLO_INFERENCE_BASE_URL,
