@@ -10,3 +10,4 @@ wheels/
 .venv
 openspec/*
 .env
+.docker.env

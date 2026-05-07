@@ -77,6 +77,24 @@ The image starts the app with:
 /app/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
+## Run with Docker Compose
+
+1. Create the external network if it does not exist:
+  ```bash
+  docker network create soat-net
+  ```
+
+2. Edit `.docker.env` with your values (minimum required: `S3_BUCKET_NAME`).
+
+3. Build and start the service:
+  ```bash
+  docker compose up --build
+  ```
+
+4. Verify the API is up:
+  - Base URL: `http://localhost:8001`
+  - Processing endpoint: `POST /processing-start`
+
 ## Configuration
 
 Use `.env` in the project root. The `Settings` class loads this file automatically.

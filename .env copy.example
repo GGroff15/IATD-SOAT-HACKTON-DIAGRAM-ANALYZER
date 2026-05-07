@@ -1,0 +1,34 @@
+# API configuration
+API_HOST=0.0.0.0
+API_PORT=8000
+
+# File download configuration
+FILE_DOWNLOAD_TIMEOUT_SECONDS=30.0
+
+# YOLO inference API configuration
+YOLO_INFERENCE_BASE_URL=http://127.0.0.1:8000
+YOLO_INFERENCE_INFER_PATH=/infer
+YOLO_INFERENCE_TIMEOUT_SECONDS=10.0
+YOLO_CONNECTION_ARROW_LINE_CLASS=arrow_line
+YOLO_CONNECTION_ARROW_HEAD_CLASS=arrow_head
+
+# OpenAI-compatible LLM inference configuration
+OPENAI_API_KEY=
+OPENAI_BASE_URL=https://api.openai.com
+OPENAI_CHAT_COMPLETIONS_PATH=/v1/chat/completions
+OPENAI_MODEL=mistral-7b-instruct
+OPENAI_TIMEOUT_SECONDS=20.0
+OPENAI_TEMPERATURE=0.1
+OPENAI_MAX_TOKENS=900
+
+# PaddleOCR configuration
+PADDLE_OCR_LANG=en
+PADDLE_OCR_DEVICE=cpu
+PADDLE_OCR_USE_ANGLE_CLS=true
+PADDLE_OCR_MODEL_DIR=
+PADDLE_OCR_ENABLE_MKLDNN=false
+
+# RabbitMQ configuration for async communication
+RABBITMQ_HOST=localhost
+RABBITMQ_PORT=5672
+RABBITMQ_QUEUE_NAME=analisys_response
