@@ -1,6 +1,31 @@
 version: "3.9"
 
 services:
+  mistral:
+    image: ollama/ollama:latest
+    ports:
+      - "1234:1234"
+    environment:
+      OLLAMA_HOST: 0.0.0.0:1234
+    volumes:
+      - ollama-data:/root/.ollama
+    command:
+      - serve
+    gpus: all
+
+  mistral-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      - mistral
+    environment:
+      OLLAMA_HOST: http://mistral:1234
+    volumes:
+      - ollama-data:/root/.ollama
+    command:
+      - pull
+      - amperecomputing/Mistral-7B-Instruct-v0.3:Q8R16
+    restart: "no"
+
   diagram-analyzer-service:
     build:
       context: .
@@ -10,12 +35,17 @@ services:
       - "8001:8000"
     env_file:
       - .docker.env
+    depends_on:
+      - mistral
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/openapi.json > /dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 40s
+
+volumes:
+  ollama-data:
 
 networks:
   default:

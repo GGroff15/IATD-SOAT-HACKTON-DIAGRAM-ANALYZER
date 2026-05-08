@@ -186,7 +186,7 @@ def build_application():
         processor=processor.process,
         error_report_publisher=error_report_publisher,
     )
-    app.add_event_handler("shutdown", http_client.aclose)
+    app.router.on_shutdown.append(http_client.aclose)
     return app, settings
 
 

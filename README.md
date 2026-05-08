@@ -84,7 +84,23 @@ The image starts the app with:
   docker network create soat-net
   ```
 
-2. Edit `.docker.env` with your values (minimum required: `S3_BUCKET_NAME`).
+2. Copy the compose environment template and edit the external service hosts:
+  ```bash
+  cp .docker.env.example .docker.env
+  ```
+
+  On Windows PowerShell:
+  ```powershell
+  Copy-Item .docker.env.example .docker.env
+  ```
+
+  Minimum required values:
+  - `YOLO_INFERENCE_BASE_URL` (example: `http://host.docker.internal:8001`)
+  - `RABBITMQ_HOST` (example: `host.docker.internal`)
+  - `RABBITMQ_PORT` (example: `5672`)
+
+  Docker Compose only starts the diagram analyzer; YOLO and RabbitMQ must be running
+  separately and reachable from the container.
 
 3. Build and start the service:
   ```bash
@@ -94,6 +110,8 @@ The image starts the app with:
 4. Verify the API is up:
   - Base URL: `http://localhost:8001`
   - Processing endpoint: `POST /processing-start`
+
+  Compose maps host port `8001` to container port `8000`.
 
 ## Configuration
 
