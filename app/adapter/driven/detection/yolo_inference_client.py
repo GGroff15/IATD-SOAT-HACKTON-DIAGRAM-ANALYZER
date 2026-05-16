@@ -11,6 +11,8 @@ from urllib.request import Request, urlopen
 
 import structlog
 
+from app.infrastructure.logging.correlation import get_correlation_id
+
 logger = structlog.get_logger()
 
 
@@ -61,15 +63,20 @@ class YoloInferenceClient:
 
     def _request_inference(self, image_bytes: bytes) -> tuple[InferenceDetection, ...]:
         body, content_type = self._build_multipart_body(image_bytes)
+        headers = {
+            "Content-Type": content_type,
+            "Accept": "application/json",
+        }
+        correlation_id = get_correlation_id()
+        if correlation_id:
+            headers["X-Correlation-ID"] = correlation_id
+        self._inject_trace_headers(headers)
 
         request = Request(
             url=self.infer_url,
             data=body,
             method="POST",
-            headers={
-                "Content-Type": content_type,
-                "Accept": "application/json",
-            },
+            headers=headers,
         )
 
         try:
@@ -160,3 +167,12 @@ class YoloInferenceClient:
         body.extend(line_break)
 
         return bytes(body), f"multipart/form-data; boundary={boundary}"
+
+    @staticmethod
+    def _inject_trace_headers(headers: dict[str, str]) -> None:
+        try:
+            from opentelemetry.propagate import inject
+
+            inject(headers)
+        except Exception:
+            return

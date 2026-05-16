@@ -7,6 +7,7 @@ from app.adapter.driven.event_publishers.error_report_publisher import RabbitMqE
 from app.adapter.driven.event_publishers.graph_result_publisher import RabbitMqGraphResultPublisher
 from app.adapter.driver.api.processing_start_endpoint import create_app
 from app.infrastructure.logging.config import configure_logging
+from app.infrastructure.observability import configure_observability
 from app.infrastructure.config.settings import Settings
 from app.adapter.driven.persistence.s3_file_storage import S3FileStorage
 from app.adapter.driven.conversion.pdf2image_converter import Pdf2ImageConverter
@@ -186,6 +187,7 @@ def build_application():
         processor=processor.process,
         error_report_publisher=error_report_publisher,
     )
+    configure_observability(app)
     app.router.on_shutdown.append(http_client.aclose)
     return app, settings
 

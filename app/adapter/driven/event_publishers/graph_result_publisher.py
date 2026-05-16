@@ -1,6 +1,8 @@
 import structlog
 import pika
+from pika import BasicProperties
 
+from app.infrastructure.logging.correlation import get_correlation_id
 from app.core.application.ports.graph_result_publisher import GraphResultPublisher
 from app.core.domain.entities.architectural_validation import (
     ArchitecturalValidationResult,
@@ -65,6 +67,21 @@ class RabbitMqGraphResultPublisher(GraphResultPublisher):
                     else [],
                 }
             ),
+            properties=BasicProperties(headers=self._trace_headers()),
         )
         channel.close()
         connection.close()
+
+    @staticmethod
+    def _trace_headers() -> dict[str, str]:
+        headers: dict[str, str] = {}
+        correlation_id = get_correlation_id()
+        if correlation_id:
+            headers["X-Correlation-ID"] = correlation_id
+        try:
+            from opentelemetry.propagate import inject
+
+            inject(headers)
+        except Exception:
+            pass
+        return headers

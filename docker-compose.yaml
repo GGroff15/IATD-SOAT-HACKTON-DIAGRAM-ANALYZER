@@ -32,9 +32,17 @@ services:
       dockerfile: Dockerfile
     image: diagram-analyzer-service:latest
     ports:
-      - "8001:8000"
+      - "8000:8000"
     env_file:
       - .docker.env
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_SERVICE_NAME: diagram-analyzer-service
+      OTEL_RESOURCE_ATTRIBUTES: deployment.environment=local,service.namespace=soat
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: otlp
     depends_on:
       - mistral
     healthcheck:

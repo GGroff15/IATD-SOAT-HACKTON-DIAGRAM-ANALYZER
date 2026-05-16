@@ -1,6 +1,8 @@
 import structlog
 import pika
+from pika import BasicProperties
 
+from app.infrastructure.logging.correlation import get_correlation_id
 from app.core.application.ports.error_report_payload import ErrorReportPayload
 from app.core.application.ports.error_report_publisher import ErrorReportPublisher
 
@@ -35,4 +37,19 @@ class RabbitMqErrorReportPublisher(ErrorReportPublisher):
                     "reason": payload.reason,
                 }
             ),
+            properties=BasicProperties(headers=self._trace_headers()),
         )
+
+    @staticmethod
+    def _trace_headers() -> dict[str, str]:
+        headers: dict[str, str] = {}
+        correlation_id = get_correlation_id()
+        if correlation_id:
+            headers["X-Correlation-ID"] = correlation_id
+        try:
+            from opentelemetry.propagate import inject
+
+            inject(headers)
+        except Exception:
+            pass
+        return headers
