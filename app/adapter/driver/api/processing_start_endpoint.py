@@ -164,7 +164,7 @@ def create_app(
         )
 
     @app.post(
-        "/processing-start",
+        "/analyze",
         response_model=ProcessingStartResponse,
         status_code=status.HTTP_202_ACCEPTED,
     )
