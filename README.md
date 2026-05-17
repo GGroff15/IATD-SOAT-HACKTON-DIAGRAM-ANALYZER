@@ -63,7 +63,11 @@ Python microservice for diagram analysis using hexagonal architecture.
     -e YOLO_INFERENCE_BASE_URL=http://host.docker.internal:8001 \
     -e RABBITMQ_HOST=host.docker.internal \
     -e RABBITMQ_PORT=5672 \
-    -e RABBITMQ_QUEUE_NAME=analisys_response \
+    -e RABBITMQ_QUEUE_NAME=analysis_response \
+    -e RABBITMQ_MESSAGE_TTL_MS=5000 \
+    -e RABBITMQ_DLX_EXCHANGE_NAME=analysis_response_dlx_exchange \
+    -e RABBITMQ_DLQ_QUEUE_NAME=analysis_response_dlq_queue \
+    -e RABBITMQ_DLQ_ROUTING_KEY=analysis_response_dlq_routing_key \
     diagram-analyzer-service:latest
   ```
 
@@ -125,7 +129,11 @@ Tip: variables with defaults may still need overrides in Docker or multi-service
 - `YOLO_INFERENCE_INFER_PATH` (default: `/infer`)
 - `RABBITMQ_HOST` (default: `localhost`)
 - `RABBITMQ_PORT` (default: `5672`)
-- `RABBITMQ_QUEUE_NAME` (default: `analisys_response`)
+- `RABBITMQ_QUEUE_NAME` (default: `analysis_response`)
+- `RABBITMQ_MESSAGE_TTL_MS` (default: `5000`)
+- `RABBITMQ_DLX_EXCHANGE_NAME` (default: `analysis_response_dlx_exchange`)
+- `RABBITMQ_DLQ_QUEUE_NAME` (default: `analysis_response_dlq_queue`)
+- `RABBITMQ_DLQ_ROUTING_KEY` (default: `analysis_response_dlq_routing_key`)
 
 ### Optional and advanced configuration
 

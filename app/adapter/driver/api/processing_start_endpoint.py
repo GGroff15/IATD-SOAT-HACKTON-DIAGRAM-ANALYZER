@@ -1,4 +1,5 @@
 import asyncio
+import re
 from collections.abc import Awaitable, Callable
 from contextvars import copy_context
 from typing import Annotated
@@ -16,14 +17,24 @@ from app.adapter.driver.api.problem_details import (
 )
 from app.core.application.ports.error_report_publisher import ErrorReportPublisher
 from app.core.domain.entities.diagram_upload import DiagramUpload
-from app.infrastructure.logging.correlation import clear_correlation_id, get_correlation_id, set_correlation_id
+from app.infrastructure.logging.correlation import (
+    clear_correlation_id,
+    get_correlation_id,
+    set_correlation_id,
+)
 
 logger = structlog.get_logger()
+
+_SENSITIVE_ERROR_VALUE_PATTERN = re.compile(
+    r"(?i)\b(password|passwd|pwd|secret|token|api[_-]?key|authorization)\s*=\s*[^,\s;]+"
+)
 
 
 class ProcessingStartFileRequest(BaseModel):
     url: str = Field(..., description="HTTP(S) URL for the diagram file")
-    mimetype: str = Field(..., min_length=1, description="MIME type of the uploaded diagram")
+    mimetype: str = Field(
+        ..., min_length=1, description="MIME type of the uploaded diagram"
+    )
 
 
 class ProcessingStartRequest(BaseModel):
@@ -36,7 +47,9 @@ class ProcessingStartResponse(BaseModel):
     protocol: str
 
 
-def _parse_upload_from_url(file_url: str, mimetype: str, protocol: str) -> DiagramUpload:
+def _parse_upload_from_url(
+    file_url: str, mimetype: str, protocol: str
+) -> DiagramUpload:
     normalized_file_url = file_url.strip()
     parsed = urlsplit(normalized_file_url)
     scheme = parsed.scheme.lower()
@@ -75,6 +88,14 @@ def _parse_upload_from_url(file_url: str, mimetype: str, protocol: str) -> Diagr
     )
 
 
+def _safe_error_message(exc: Exception) -> str:
+    message = str(exc).strip()
+    if not message:
+        return exc.__class__.__name__
+
+    return _SENSITIVE_ERROR_VALUE_PATTERN.sub(r"\1=<redacted>", message)
+
+
 def create_app(
     processor: Callable[[DiagramUpload], Awaitable[None]],
     error_report_publisher: ErrorReportPublisher,
@@ -87,11 +108,15 @@ def create_app(
             await processor(upload)
         except Exception as exc:
             correlation_id = get_correlation_id()
-            problem, classification = map_exception_to_problem(exc=exc, instance="/processing-start")
+            problem, classification = map_exception_to_problem(
+                exc=exc, instance="/processing-start"
+            )
 
             logger.exception(
                 "http.processing_start.background_failed",
                 error_classification=classification,
+                error_type=type(exc).__name__,
+                error=_safe_error_message(exc),
                 path="/processing-start",
                 correlation_id=correlation_id,
                 status_code=problem.status,
@@ -106,10 +131,12 @@ def create_app(
 
             try:
                 await error_report_publisher.publish_error(payload)
-            except Exception:
+            except Exception as publish_exc:
                 logger.exception(
                     "http.processing_start.background_error_report_publish_failed",
                     error_classification=classification,
+                    error_type=type(publish_exc).__name__,
+                    error=_safe_error_message(publish_exc),
                     path="/processing-start",
                     correlation_id=correlation_id,
                 )
@@ -128,13 +155,19 @@ def create_app(
         task.add_done_callback(in_flight_tasks.discard)
 
     @app.exception_handler(Exception)
-    async def handle_unexpected_exception(request: Request, exc: Exception) -> JSONResponse:
-        problem, classification = map_exception_to_problem(exc=exc, instance=request.url.path)
+    async def handle_unexpected_exception(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
+        problem, classification = map_exception_to_problem(
+            exc=exc, instance=request.url.path
+        )
         correlation_id = get_correlation_id()
 
         logger.exception(
             "http.processing_start.failed",
             error_classification=classification,
+            error_type=type(exc).__name__,
+            error=_safe_error_message(exc),
             path=request.url.path,
             correlation_id=correlation_id,
             status_code=problem.status,
@@ -149,10 +182,12 @@ def create_app(
 
         try:
             await error_report_publisher.publish_error(payload)
-        except Exception:
+        except Exception as publish_exc:
             logger.exception(
                 "http.processing_start.error_report_publish_failed",
                 error_classification=classification,
+                error_type=type(publish_exc).__name__,
+                error=_safe_error_message(publish_exc),
                 path=request.url.path,
                 correlation_id=correlation_id,
             )
@@ -168,7 +203,9 @@ def create_app(
         response_model=ProcessingStartResponse,
         status_code=status.HTTP_202_ACCEPTED,
     )
-    async def processing_start(request: ProcessingStartRequest) -> ProcessingStartResponse:
+    async def processing_start(
+        request: ProcessingStartRequest,
+    ) -> ProcessingStartResponse:
         try:
             upload = _parse_upload_from_url(
                 request.file.url,

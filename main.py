@@ -3,8 +3,12 @@ import structlog
 import uvicorn
 from paddleocr import PaddleOCR
 
-from app.adapter.driven.event_publishers.error_report_publisher import RabbitMqErrorReportPublisher
-from app.adapter.driven.event_publishers.graph_result_publisher import RabbitMqGraphResultPublisher
+from app.adapter.driven.event_publishers.error_report_publisher import (
+    RabbitMqErrorReportPublisher,
+)
+from app.adapter.driven.event_publishers.graph_result_publisher import (
+    RabbitMqGraphResultPublisher,
+)
 from app.adapter.driver.api.processing_start_endpoint import create_app
 from app.infrastructure.logging.config import configure_logging
 from app.infrastructure.observability import configure_observability
@@ -21,7 +25,9 @@ from app.adapter.driven.llm.openai_compatible_architecture_llm_analyzer import (
 from app.core.application.services.architectural_rules_validator_service import (
     ArchitecturalRulesValidatorService,
 )
-from app.core.application.services.diagram_upload_processor import DiagramUploadProcessor
+from app.core.application.services.diagram_upload_processor import (
+    DiagramUploadProcessor,
+)
 from app.core.application.services.graph_builder_service import GraphBuilderService
 from app.core.application.services.architecture_prompt_builder import (
     MistralArchitecturePromptBuilder,
@@ -126,11 +132,19 @@ def build_application():
         rabbitmq_host=settings.RABBITMQ_HOST,
         rabbitmq_port=settings.RABBITMQ_PORT,
         rabbitmq_queue_name=settings.RABBITMQ_QUEUE_NAME,
+        rabbitmq_message_ttl_ms=settings.RABBITMQ_MESSAGE_TTL_MS,
+        rabbitmq_dlx_exchange_name=settings.RABBITMQ_DLX_EXCHANGE_NAME,
+        rabbitmq_dlq_queue_name=settings.RABBITMQ_DLQ_QUEUE_NAME,
+        rabbitmq_dlq_routing_key=settings.RABBITMQ_DLQ_ROUTING_KEY,
     )
     graph_result_publisher = RabbitMqGraphResultPublisher(
         rabbitmq_host=settings.RABBITMQ_HOST,
         rabbitmq_port=settings.RABBITMQ_PORT,
         rabbitmq_queue_name=settings.RABBITMQ_QUEUE_NAME,
+        rabbitmq_message_ttl_ms=settings.RABBITMQ_MESSAGE_TTL_MS,
+        rabbitmq_dlx_exchange_name=settings.RABBITMQ_DLX_EXCHANGE_NAME,
+        rabbitmq_dlq_queue_name=settings.RABBITMQ_DLQ_QUEUE_NAME,
+        rabbitmq_dlq_routing_key=settings.RABBITMQ_DLQ_ROUTING_KEY,
     )
     image_converter = Pdf2ImageConverter()
     inference_client = YoloInferenceClient(

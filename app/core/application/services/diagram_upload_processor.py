@@ -163,6 +163,11 @@ class DiagramUploadProcessor:
         validation_result = self._validate_architectural_rules(graph)
         llm_analysis = await self._analyze_with_llm(graph, validation_result)
 
+        logger.info(
+            "diagram_upload.process.analysis_completed",
+            diagram_upload_id=str(upload.diagram_upload_id),
+        )
+
         if self.graph_result_publisher is not None:
             await self.graph_result_publisher.publish_graph(
                 graph,

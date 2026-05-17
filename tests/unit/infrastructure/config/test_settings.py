@@ -15,3 +15,19 @@ def test_default_env_file_path_points_to_project_root() -> None:
     expected_path = Path(__file__).resolve().parents[4] / ".env"
 
     assert DEFAULT_ENV_FILE_PATH == expected_path
+
+
+def test_settings_default_response_queue_uses_ttl(monkeypatch) -> None:
+    monkeypatch.delenv("RABBITMQ_QUEUE_NAME", raising=False)
+    monkeypatch.delenv("RABBITMQ_MESSAGE_TTL_MS", raising=False)
+    monkeypatch.delenv("RABBITMQ_DLX_EXCHANGE_NAME", raising=False)
+    monkeypatch.delenv("RABBITMQ_DLQ_QUEUE_NAME", raising=False)
+    monkeypatch.delenv("RABBITMQ_DLQ_ROUTING_KEY", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.RABBITMQ_QUEUE_NAME == "analysis_response"
+    assert settings.RABBITMQ_MESSAGE_TTL_MS == 5000
+    assert settings.RABBITMQ_DLX_EXCHANGE_NAME == "analysis_response_dlx_exchange"
+    assert settings.RABBITMQ_DLQ_QUEUE_NAME == "analysis_response_dlq_queue"
+    assert settings.RABBITMQ_DLQ_ROUTING_KEY == "analysis_response_dlq_routing_key"

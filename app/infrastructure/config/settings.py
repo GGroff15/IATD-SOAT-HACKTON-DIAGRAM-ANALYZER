@@ -1,16 +1,21 @@
 from pathlib import Path
 from typing import Optional
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 DEFAULT_ENV_FILE_PATH = Path(__file__).resolve().parents[3] / ".env"
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=DEFAULT_ENV_FILE_PATH,
+        env_file_encoding="utf-8",
+    )
+
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
-    
+
     # YOLO Inference API Settings
     YOLO_INFERENCE_BASE_URL: str = "http://127.0.0.1:8000"
     YOLO_INFERENCE_INFER_PATH: str = "/infer"
@@ -39,8 +44,8 @@ class Settings(BaseSettings):
 
     RABBITMQ_HOST: str = "localhost"
     RABBITMQ_PORT: int = 5672
-    RABBITMQ_QUEUE_NAME: str = "analisys_response"
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    RABBITMQ_QUEUE_NAME: str = "analysis_response"
+    RABBITMQ_MESSAGE_TTL_MS: int = 5000
+    RABBITMQ_DLX_EXCHANGE_NAME: str = "analysis_response_dlx_exchange"
+    RABBITMQ_DLQ_QUEUE_NAME: str = "analysis_response_dlq_queue"
+    RABBITMQ_DLQ_ROUTING_KEY: str = "analysis_response_dlq_routing_key"
