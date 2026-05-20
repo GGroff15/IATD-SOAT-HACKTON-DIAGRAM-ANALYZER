@@ -1,3 +1,4 @@
+import json
 from uuid import UUID
 
 import pytest
@@ -8,6 +9,9 @@ from app.adapter.driven.event_publishers.error_report_publisher import (
     RabbitMqErrorReportPublisher,
 )
 from app.adapter.driven.event_publishers.graph_result_publisher import (
+    HARDCODED_COMPONENTS,
+    HARDCODED_RECOMMENDATIONS,
+    HARDCODED_RISKS,
     RabbitMqGraphResultPublisher,
 )
 from app.core.application.ports.error_report_payload import ErrorReportPayload
@@ -137,6 +141,35 @@ async def test_graph_result_publisher_declares_response_queue_with_default_ttl(
     _assert_response_topology_declared(channel, ttl_ms=5000)
     assert channel.closed is True
     assert connection.closed is True
+
+
+@pytest.mark.asyncio
+async def test_graph_result_publisher_publishes_hardcoded_analysis_payload(
+    monkeypatch,
+) -> None:
+    _patch_blocking_connection(monkeypatch)
+    graph, validation_result, llm_analysis = _successful_graph_payload()
+    publisher = RabbitMqGraphResultPublisher(
+        rabbitmq_host="rabbitmq",
+        rabbitmq_port=5672,
+        rabbitmq_queue_name="analysis_response",
+    )
+
+    await publisher.publish_graph(graph, validation_result, llm_analysis)
+
+    channel = FakeConnection.instances[0].channel_instance
+    assert len(channel.basic_publish_calls) == 1
+
+    publish_call = channel.basic_publish_calls[0]
+    payload = json.loads(publish_call["body"])
+    assert publish_call["exchange"] == ""
+    assert publish_call["routing_key"] == "analysis_response"
+    assert payload == {
+        "protocol": "550e8400-e29b-41d4-a716-446655440000",
+        "components": HARDCODED_COMPONENTS,
+        "risks": HARDCODED_RISKS,
+        "recommendations": HARDCODED_RECOMMENDATIONS,
+    }
 
 
 @pytest.mark.asyncio
