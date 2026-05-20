@@ -1,12 +1,17 @@
-import boto3
+import httpx
 import structlog
 import uvicorn
 from paddleocr import PaddleOCR
 
-from app.adapter.driven.event_publishers.error_report_publisher import RabbitMqErrorReportPublisher
-from app.adapter.driven.event_publishers.graph_result_publisher import RabbitMqGraphResultPublisher
+from app.adapter.driven.event_publishers.error_report_publisher import (
+    RabbitMqErrorReportPublisher,
+)
+from app.adapter.driven.event_publishers.graph_result_publisher import (
+    RabbitMqGraphResultPublisher,
+)
 from app.adapter.driver.api.processing_start_endpoint import create_app
 from app.infrastructure.logging.config import configure_logging
+from app.infrastructure.observability import configure_observability
 from app.infrastructure.config.settings import Settings
 from app.adapter.driven.persistence.s3_file_storage import S3FileStorage
 from app.adapter.driven.conversion.pdf2image_converter import Pdf2ImageConverter
@@ -20,7 +25,9 @@ from app.adapter.driven.llm.openai_compatible_architecture_llm_analyzer import (
 from app.core.application.services.architectural_rules_validator_service import (
     ArchitecturalRulesValidatorService,
 )
-from app.core.application.services.diagram_upload_processor import DiagramUploadProcessor
+from app.core.application.services.diagram_upload_processor import (
+    DiagramUploadProcessor,
+)
 from app.core.application.services.graph_builder_service import GraphBuilderService
 from app.core.application.services.architecture_prompt_builder import (
     MistralArchitecturePromptBuilder,
@@ -111,38 +118,33 @@ def build_application():
     try:
         settings = Settings()  # type: ignore[call-arg]
     except Exception:
-        print("Missing required configuration. Ensure S3_BUCKET_NAME is set in the environment or .env file.")
+        print("Missing required configuration. Check environment or .env file.")
         raise
 
-    # Create infrastructure clients
-    client_kwargs = {"region_name": settings.AWS_REGION}
-
-    if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
-        client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
-        client_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
-    if settings.AWS_SESSION_TOKEN:
-        client_kwargs["aws_session_token"] = settings.AWS_SESSION_TOKEN
-
-    if settings.AWS_ENDPOINT_URL:
-        client_kwargs["endpoint_url"] = settings.AWS_ENDPOINT_URL
-        # For LocalStack/local testing, provide dummy credentials if not configured
-        if "aws_access_key_id" not in client_kwargs:
-            client_kwargs["aws_access_key_id"] = "test"
-            client_kwargs["aws_secret_access_key"] = "test"
-    
-    s3_client = boto3.client("s3", **client_kwargs)
+    http_client = httpx.AsyncClient(
+        follow_redirects=True,
+        timeout=httpx.Timeout(settings.FILE_DOWNLOAD_TIMEOUT_SECONDS),
+    )
 
     # Create driven adapters (outbound ports)
-    file_storage = S3FileStorage(s3_client=s3_client, bucket_name=settings.S3_BUCKET_NAME)
+    file_storage = S3FileStorage(http_client=http_client)
     error_report_publisher = RabbitMqErrorReportPublisher(
         rabbitmq_host=settings.RABBITMQ_HOST,
         rabbitmq_port=settings.RABBITMQ_PORT,
         rabbitmq_queue_name=settings.RABBITMQ_QUEUE_NAME,
+        rabbitmq_message_ttl_ms=settings.RABBITMQ_MESSAGE_TTL_MS,
+        rabbitmq_dlx_exchange_name=settings.RABBITMQ_DLX_EXCHANGE_NAME,
+        rabbitmq_dlq_queue_name=settings.RABBITMQ_DLQ_QUEUE_NAME,
+        rabbitmq_dlq_routing_key=settings.RABBITMQ_DLQ_ROUTING_KEY,
     )
     graph_result_publisher = RabbitMqGraphResultPublisher(
         rabbitmq_host=settings.RABBITMQ_HOST,
         rabbitmq_port=settings.RABBITMQ_PORT,
         rabbitmq_queue_name=settings.RABBITMQ_QUEUE_NAME,
+        rabbitmq_message_ttl_ms=settings.RABBITMQ_MESSAGE_TTL_MS,
+        rabbitmq_dlx_exchange_name=settings.RABBITMQ_DLX_EXCHANGE_NAME,
+        rabbitmq_dlq_queue_name=settings.RABBITMQ_DLQ_QUEUE_NAME,
+        rabbitmq_dlq_routing_key=settings.RABBITMQ_DLQ_ROUTING_KEY,
     )
     image_converter = Pdf2ImageConverter()
     inference_client = YoloInferenceClient(
@@ -195,10 +197,13 @@ def build_application():
         graph_result_publisher=graph_result_publisher,
     )
 
-    return create_app(
+    app = create_app(
         processor=processor.process,
         error_report_publisher=error_report_publisher,
-    ), settings
+    )
+    configure_observability(app)
+    app.router.on_shutdown.append(http_client.aclose)
+    return app, settings
 
 
 app, _settings = build_application()

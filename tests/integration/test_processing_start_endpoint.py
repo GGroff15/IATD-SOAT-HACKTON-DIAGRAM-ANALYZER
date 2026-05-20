@@ -96,7 +96,7 @@ def test_processing_start_endpoint_triggers_processing_pipeline() -> None:
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440000",
             "file": {
-                "url": "s3://input-bucket/uploads/project-a/diagram.pdf",
+                "url": "https://example.com/uploads/project-a/diagram.pdf",
                 "mimetype": "application/pdf",
             },
         },
@@ -110,7 +110,7 @@ def test_processing_start_endpoint_triggers_processing_pipeline() -> None:
     assert _wait_for(lambda: converter.convert_to_image.call_count == 1)
 
     storage.download_file.assert_called_once_with(
-        file_url="s3://input-bucket/uploads/project-a/diagram.pdf"
+        file_url="https://example.com/uploads/project-a/diagram.pdf"
     )
     converter.convert_to_image.assert_called_once_with(file_content=b"pdf-bytes", extension=".pdf")
 
@@ -125,7 +125,7 @@ def test_processing_start_endpoint_uses_http_as_only_ingress() -> None:
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440001",
             "file": {
-                "url": "s3://input-bucket/uploads/project-a/diagram.pdf",
+                "url": "https://example.com/uploads/project-a/diagram.pdf",
                 "mimetype": "application/pdf",
             },
         },
@@ -163,7 +163,7 @@ def test_processing_start_endpoint_publishes_graph_with_validation_result() -> N
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440000",
             "file": {
-                "url": "s3://input-bucket/uploads/project-a/diagram.pdf",
+                "url": "https://example.com/uploads/project-a/diagram.pdf",
                 "mimetype": "application/pdf",
             },
         },
@@ -198,7 +198,7 @@ def test_processing_start_endpoint_returns_problem_details_with_expected_media_t
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440009",
             "file": {
-                "url": "s3://input-bucket/uploads/project-a/diagram.pdf",
+                "url": "https://example.com/uploads/project-a/diagram.pdf",
                 "mimetype": "application/pdf",
             },
         },
