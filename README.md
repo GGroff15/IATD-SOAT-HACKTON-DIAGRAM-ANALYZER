@@ -415,3 +415,23 @@ Install Poppler for your operating system and make sure its binaries are availab
 ### LLM Analysis Is Missing
 
 Set `OPENAI_API_KEY` to enable LLM analysis. Also confirm `OPENAI_BASE_URL`, `OPENAI_CHAT_COMPLETIONS_PATH`, and `OPENAI_MODEL` match your OpenAI-compatible server.
+
+## Equipe
+
+### Integrantes IADT
+
+| Nome | RM |
+|---|---|
+| Angelo Rossi | RM365902 |
+| Carlos Eduardo | RM365213 |
+| Felipe Goiabeira | RM365753 |
+| Guilherme Groff | RM365281 |
+| Rafael Lua | RM366254 |
+
+### Integrantes SOAT
+
+| Nome | RM |
+|---|---|
+| Felipe Alves de Oliveira | RM365154 |
+| Nicolas Henrique Correa Martins | RM365746 |
+| William Francisco Leite | RM365973 |
