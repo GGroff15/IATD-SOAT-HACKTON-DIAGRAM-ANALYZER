@@ -28,7 +28,7 @@ def test_processing_start_returns_acknowledgment_with_protocol() -> None:
     client = TestClient(create_app(processor=processor, error_report_publisher=reporter))
 
     response = client.post(
-        "/processing-start",
+        "/analyze",
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440000",
             "file": {
@@ -58,7 +58,7 @@ def test_processing_start_returns_accepted_immediately_while_processing_runs_asy
 
     start = time.perf_counter()
     response = client.post(
-        "/processing-start",
+        "/analyze",
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440001",
             "file": {
@@ -80,7 +80,7 @@ def test_processing_start_rejects_missing_required_field() -> None:
     client = TestClient(create_app(processor=processor, error_report_publisher=reporter))
 
     response = client.post(
-        "/processing-start",
+        "/analyze",
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440000",
             "file": {
@@ -99,7 +99,7 @@ def test_processing_start_rejects_non_http_url() -> None:
     client = TestClient(create_app(processor=processor, error_report_publisher=reporter))
 
     response = client.post(
-        "/processing-start",
+        "/analyze",
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440000",
             "file": {
@@ -126,7 +126,7 @@ def test_processing_start_accepts_root_object_key_without_folder_extraction() ->
     client = TestClient(create_app(processor=processor, error_report_publisher=reporter))
 
     response = client.post(
-        "/processing-start",
+        "/analyze",
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440002",
             "file": {
@@ -154,7 +154,7 @@ def test_processing_start_reports_background_processing_failure() -> None:
     client = TestClient(create_app(processor=processor, error_report_publisher=reporter))
 
     response = client.post(
-        "/processing-start",
+        "/analyze",
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440000",
             "file": {
@@ -184,7 +184,7 @@ def test_processing_start_returns_response_when_error_report_publication_fails()
     client = TestClient(create_app(processor=processor, error_report_publisher=reporter))
 
     response = client.post(
-        "/processing-start",
+        "/analyze",
         json={
             "protocol": "550e8400-e29b-41d4-a716-446655440003",
             "file": {

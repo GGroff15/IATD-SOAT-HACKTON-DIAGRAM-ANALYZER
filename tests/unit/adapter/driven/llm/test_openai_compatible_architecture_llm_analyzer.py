@@ -7,6 +7,9 @@ from app.adapter.driven.llm.openai_compatible_architecture_llm_analyzer import (
     ArchitectureLlmAnalyzerImpl,
 )
 from app.core.application.exceptions import LlmInferenceError
+from app.core.application.services.architecture_prompt_builder import (
+    MistralArchitecturePromptBuilder,
+)
 from app.core.domain.entities.architectural_validation import ArchitecturalValidationResult
 from app.core.domain.entities.detected_component import DetectedComponent
 from app.core.domain.entities.graph import Graph, GraphNode
@@ -39,6 +42,11 @@ async def test_openai_compatible_analyzer_parses_json_payload(monkeypatch: pytes
         api_key="test-key",
         base_url="https://example.test",
         model="mistral-7b-instruct",
+        chat_completions_path="/v1/chat/completions",
+        timeout_seconds=30.0,
+        temperature=0.1,
+        max_tokens=2048,
+        prompt_builder=MistralArchitecturePromptBuilder(),
     )
 
     response = Mock()
@@ -89,6 +97,11 @@ async def test_openai_compatible_analyzer_moves_summary_to_first_recommendation(
         api_key="test-key",
         base_url="https://example.test",
         model="mistral-7b-instruct",
+        chat_completions_path="/v1/chat/completions",
+        timeout_seconds=30.0,
+        temperature=0.1,
+        max_tokens=2048,
+        prompt_builder=MistralArchitecturePromptBuilder(),
     )
 
     response = Mock()
@@ -137,6 +150,11 @@ async def test_openai_compatible_analyzer_raises_for_http_error_status(
         api_key="test-key",
         base_url="https://example.test",
         model="mistral-7b-instruct",
+        chat_completions_path="/v1/chat/completions",
+        timeout_seconds=30.0,
+        temperature=0.1,
+        max_tokens=2048,
+        prompt_builder=MistralArchitecturePromptBuilder(),
     )
 
     response = Mock()
@@ -166,37 +184,26 @@ async def test_openai_compatible_analyzer_raises_for_http_error_status(
 
 
 @pytest.mark.asyncio
-async def test_openai_compatible_analyzer_retries_without_response_format_for_schema_error(
+async def test_openai_compatible_analyzer_raises_for_bad_request_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     analyzer = ArchitectureLlmAnalyzerImpl(
         api_key="test-key",
         base_url="https://example.test",
         model="mistral-7b-instruct",
+        chat_completions_path="/v1/chat/completions",
+        timeout_seconds=30.0,
+        temperature=0.1,
+        max_tokens=2048,
+        prompt_builder=MistralArchitecturePromptBuilder(),
     )
 
-    first_response = Mock()
-    first_response.status_code = 400
-    first_response.text = '{"error":"response_format.json_schema must be an object"}'
-
-    second_response = Mock()
-    second_response.status_code = 200
-    second_response.text = "ok"
-    second_response.json.return_value = {
-        "choices": [
-            {
-                "message": {
-                    "content": (
-                        '{"risks":["Cluster bottleneck"],'
-                        '"recommendations":["Overall moderate risk","Refactor edge-heavy modules"]}'
-                    )
-                }
-            }
-        ]
-    }
+    response = Mock()
+    response.status_code = 400
+    response.text = '{"error":"response_format.json_schema must be an object"}'
 
     async_client = AsyncMock()
-    async_client.post = AsyncMock(side_effect=[first_response, second_response])
+    async_client.post = AsyncMock(return_value=response)
     async_context_manager = AsyncMock()
     async_context_manager.__aenter__.return_value = async_client
     async_context_manager.__aexit__.return_value = False
@@ -206,19 +213,12 @@ async def test_openai_compatible_analyzer_retries_without_response_format_for_sc
         lambda *args, **kwargs: async_context_manager,
     )
 
-    result = await analyzer.analyze(
-        graph=_build_graph(),
-        validation_result=ArchitecturalValidationResult(
-            diagram_upload_id=uuid4(),
-            is_valid=True,
-            violations=tuple(),
-        ),
-    )
-
-    assert result.risks == ("Cluster bottleneck",)
-    assert result.recommendations[0] == "Overall moderate risk"
-    assert async_client.post.call_count == 2
-    first_call_payload = async_client.post.call_args_list[0].kwargs["json"]
-    second_call_payload = async_client.post.call_args_list[1].kwargs["json"]
-    assert "response_format" in first_call_payload
-    assert "response_format" not in second_call_payload
+    with pytest.raises(LlmInferenceError, match="HTTP 400"):
+        await analyzer.analyze(
+            graph=_build_graph(),
+            validation_result=ArchitecturalValidationResult(
+                diagram_upload_id=uuid4(),
+                is_valid=True,
+                violations=tuple(),
+            ),
+        )

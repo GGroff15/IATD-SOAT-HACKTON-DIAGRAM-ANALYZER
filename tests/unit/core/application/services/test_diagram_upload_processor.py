@@ -487,9 +487,8 @@ async def test_processor_enriches_components_with_extracted_text():
 
 
 @pytest.mark.asyncio
-async def test_processor_handles_ocr_error_gracefully():
-    """Test that processor continues when OCR fails for a component"""
-    # Arrange
+async def test_processor_raises_ocr_error():
+    """Test that processor propagates TextExtractionError when OCR fails."""
     upload = DiagramUpload(
         uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf"
     )
@@ -511,7 +510,6 @@ async def test_processor_handles_ocr_error_gracefully():
         components=(component,),
     )
 
-    # Mock text extractor to raise error
     mock_extractor = MockTextExtractor()
     mock_extractor.extract_text.side_effect = TextExtractionError("OCR failed")
     mock_connection_detector = MockConnectionDetector()
@@ -526,10 +524,9 @@ async def test_processor_handles_ocr_error_gracefully():
         graph_builder=mock_graph_builder,
     )
 
-    # Act - should not raise exception, should log and continue
-    await processor.process(upload)
+    with pytest.raises(TextExtractionError, match="OCR failed"):
+        await processor.process(upload)
 
-    # Assert - verify text extractor was called but error was handled
     mock_extractor.extract_text.assert_called_once()
 
 
@@ -626,9 +623,8 @@ async def test_processor_detects_connections_after_components():
 
 
 @pytest.mark.asyncio
-async def test_processor_handles_connection_detection_error_gracefully():
-    """Test that processor continues when connection detection fails"""
-    # Arrange
+async def test_processor_raises_connection_detection_error():
+    """Test that processor propagates ConnectionDetectionError when connection detection fails."""
     upload = DiagramUpload(
         uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf"
     )
@@ -650,7 +646,6 @@ async def test_processor_handles_connection_detection_error_gracefully():
         components=(component,),
     )
 
-    # Mock connection detector to raise error
     mock_connection_detector = MockConnectionDetector()
     mock_connection_detector.detect.side_effect = ConnectionDetectionError(
         "Detection failed"
@@ -668,10 +663,9 @@ async def test_processor_handles_connection_detection_error_gracefully():
         graph_builder=mock_graph_builder,
     )
 
-    # Act - should not raise exception, should log and continue
-    await processor.process(upload)
+    with pytest.raises(ConnectionDetectionError, match="Detection failed"):
+        await processor.process(upload)
 
-    # Assert - connection detector was called but error was handled
     mock_connection_detector.detect.assert_called_once()
 
 
@@ -873,8 +867,8 @@ async def test_processor_publishes_llm_analysis_when_available():
 
 
 @pytest.mark.asyncio
-async def test_processor_continues_when_llm_fails_and_publishes_error_metadata():
-    """Test that processor continues with LLM error metadata when inference fails."""
+async def test_processor_raises_llm_inference_error():
+    """Test that processor propagates LlmInferenceError when LLM analysis fails."""
     upload = DiagramUpload(
         uuid4(), file_url="s3://input-bucket/test-folder/diagram.pdf", extension=".pdf"
     )
@@ -901,13 +895,7 @@ async def test_processor_continues_when_llm_fails_and_publishes_error_metadata()
         graph_result_publisher=mock_graph_result_publisher,
     )
 
-    await processor.process(upload)
+    with pytest.raises(LlmInferenceError, match="LLM analysis failed: gateway timeout"):
+        await processor.process(upload)
 
-    publish_call_args = mock_graph_result_publisher.publish_graph.await_args.args
-    assert publish_call_args[0] == mock_graph_builder.build.return_value
-    assert (
-        publish_call_args[1] == mock_architectural_rules_validator.validate.return_value
-    )
-    assert publish_call_args[2] is None
-    assert publish_call_args[3].code == "LLM_INFERENCE_ERROR"
-    assert publish_call_args[3].message == "gateway timeout"
+    mock_graph_result_publisher.publish_graph.assert_not_awaited()

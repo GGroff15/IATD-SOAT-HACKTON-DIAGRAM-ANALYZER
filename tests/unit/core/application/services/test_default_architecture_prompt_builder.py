@@ -57,7 +57,7 @@ def test_prompt_builder_generates_system_and_user_messages() -> None:
     messages = builder.build_messages(graph=graph, validation_result=validation_result)
 
     assert len(messages) == 2
-    assert messages[0]["role"] == "system"
+    assert messages[0]["role"] == "user"
     assert "As an architect or developer" in messages[0]["content"]
     assert "Assign a risk score per node" in messages[0]["content"]
     assert "first recommendations item MUST be the concise overall summary" in messages[0]["content"]
