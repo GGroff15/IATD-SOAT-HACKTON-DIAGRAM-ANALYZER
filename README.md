@@ -298,31 +298,88 @@ Install development dependencies first:
 uv sync --extra dev
 ```
 
-Run all tests:
+Copy the environment file before running any test that reads settings:
+
+```bash
+cp .env.example .env
+```
+
+### Unit tests
+
+Run the full unit test suite:
+
+```bash
+uv run pytest tests/unit/
+```
+
+Run with coverage report (minimum required: 80%):
+
+```bash
+uv run pytest tests/unit/ --cov=app --cov-report=term-missing --cov-fail-under=80
+```
+
+The `pythonpath` is already configured in `pyproject.toml`, so no extra environment variables are needed.
+
+### Integration tests
+
+Integration tests use [Testcontainers](https://testcontainers.com/) with LocalStack for AWS and require Docker to be running locally:
+
+```bash
+uv run pytest tests/integration/
+```
+
+RabbitMQ and the YOLO inference API must be reachable according to the values in `.env`. Integration tests are not executed in the CI pipeline because they require real external services.
+
+### All tests
 
 ```bash
 uv run pytest
 ```
 
-Run unit tests:
+### Coverage only
 
 ```bash
-uv run pytest tests/unit
+uv run pytest --cov=app --cov-report=html
 ```
 
-Run integration tests:
+The HTML report is written to `htmlcov/index.html`.
+
+## CI/CD
+
+The repository uses GitHub Actions with a workflow at `.github/workflows/ci.yml` that runs automatically on every pull request targeting `main`.
+
+The pipeline has two sequential jobs:
+
+| Job | What it does |
+| --- | --- |
+| `run_tests` | Installs dependencies with `uv sync --extra dev`, copies `.env.example` to `.env`, runs `pytest tests/unit/` with 80% coverage enforcement. Fails the build if coverage drops below 80%. |
+| `build_and_push` | Builds the Docker image and pushes `{DOCKER_USERNAME}/soat-diagram-analyzer:latest` to Docker Hub. Runs only after `run_tests` succeeds. |
+
+Required GitHub secrets: `DOCKER_USERNAME` and `DOCKER_PASSWORD`.
+
+> Integration tests are excluded from the pipeline because they require LocalStack, RabbitMQ, and external services that are not available in the CI environment.
+
+## API Testing
+
+There is no Postman collection in this repository. Use the auto-generated interactive docs instead:
+
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+- Raw schema: `http://localhost:8000/openapi.json`
+
+Quick curl test after the service is running:
 
 ```bash
-uv run pytest tests/integration
+curl -s -X POST http://localhost:8000/analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "protocol": "550e8400-e29b-41d4-a716-446655440000",
+    "file": {
+      "url": "https://example.com/diagram.pdf",
+      "mimetype": "application/pdf"
+    }
+  }' | python3 -m json.tool
 ```
-
-Run tests with coverage:
-
-```bash
-uv run pytest --cov=app
-```
-
-Integration tests may require Docker because Testcontainers and LocalStack are used for some external-service scenarios.
 
 ## Development Notes
 
