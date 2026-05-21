@@ -3,7 +3,7 @@ name: CI/CD - Diagram Analyzer
 on:
   pull_request:
     branches:
-      - main
+      - master
 
 jobs:
   run_tests:
