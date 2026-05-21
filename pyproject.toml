@@ -27,6 +27,12 @@ dependencies = [
     "uvicorn[standard]>=0.41.0",
 ]
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.coverage.run]
+omit = ["app/infrastructure/logging/observability.py"]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",

@@ -11,3 +11,4 @@ wheels/
 openspec/*
 .env
 .docker.env
+.coverage
